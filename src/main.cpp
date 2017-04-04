@@ -21,7 +21,6 @@
 #include <cstdlib>
 #include <ctime>
 
-
 void GLFWErrorCallback(int Error, const char* Desc);
 
 void APIENTRY GLErrorLog(GLenum Source, GLenum Type, GLuint ID, GLenum Severity,
@@ -57,7 +56,6 @@ struct fish {
 		, Texture{ TexturePath } {
 	}
 };
-
 int main() {
 	// Seed entropy
 	std::srand((uint)time(nullptr));
@@ -75,9 +73,6 @@ int main() {
 
 	// Resizable
 	glfwWindowHint(GLFW_RESIZABLE, false);
-
-	// MSAA
-//	glfwWindowHint(GLFW_SAMPLES, 4); // Disabled for now
 
 	// Create a window of this dimension
 	glm::vec2 ScreenDimension = { 1280, 720 };
@@ -127,13 +122,10 @@ int main() {
 
 	// Dont take vsync into account
 	glfwSwapInterval(0);
-	
-	// Blindly enable MSAA
-//	gl::Enable(gl::MULTISAMPLE);
 
 	// Enable backface culling
-	gl::Enable(gl::CULL_FACE);
-	gl::FrontFace(gl::CW);
+//	gl::Enable(gl::CULL_FACE);
+	gl::FrontFace(gl::CCW);
 	gl::CullFace(gl::BACK);
 
 	// Enable alpha blending
@@ -149,7 +141,7 @@ int main() {
 	for(auto& Quad : Fishes) {
 		Quad.Speed = glm::linearRand(fish::MinSpeed, fish::MaxSpeed);
 		if(Quad.Texture.Load()) {
-				Quad.Transform.Scale = { Quad.Texture.Width, Quad.Texture.Height, 1.f };
+				Quad.Transform.Scale = glm::vec3{ Quad.Texture.Width, Quad.Texture.Height, 1.f } * .5f;
 		} else {
 			LogError("Failed loading texture: %s", Quad.Texture.Path.c_str());
 		}
@@ -175,7 +167,8 @@ int main() {
 	default_framebuffer IntermediateFramebuffer{glm::ivec2{ScreenDimension}};
 
 	// Intermediate quad
-	quad_vertices ScreenQuad;// ; { transform{ glm::vec3{0}, glm::vec3{2.f} }, transform{ glm::vec3{0.f, 1.f, 0.f}, glm::vec3{1, -1, 1} } };
+// 
+	quad_vertices ScreenQuad{ transform{ glm::vec3{0}, glm::vec3{2.f} } };
 
 	// Intermediate renderprog
 	render_program ScreenRenderprog{};
@@ -197,8 +190,8 @@ int main() {
 		/////////////////////////////////
 		// UPDATE LOGIC
 		/////////////////////////////////
-		
-		// Per-frame timing
+	
+    	// Per-frame timing
 		float TimeSinceStart = (float)glfwGetTime() - StartTime;
 		float DeltaTime = (float)glfwGetTime() - LastTime;
 		LastTime = (float)glfwGetTime();
@@ -337,32 +330,36 @@ int main() {
 				DrawQuad(WarpedModel);
 			}
 		}
-
-
-#if 0
-		// Draw to screen
+		
+    	// Draw to screen
 		{
 			// Go back to screen framebuffer
 			gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
-//			gl::Clear(gl::COLOR_BUFFER_BIT);
+			gl::ClearColor(0.f, 0.f, 1.f, 1.f);
+			gl::Clear(gl::COLOR_BUFFER_BIT);
 	
 			const uint PostTextureUnit = 0;
 			gl::ActiveTexture(gl::TEXTURE0 + PostTextureUnit);
 			gl::BindTexture(gl::TEXTURE_2D, IntermediateFramebuffer.ColorTexture);
 
+			if(glfwGetKey(Window, GLFW_KEY_INSERT) == GLFW_PRESS) {
+				ScreenRenderprog.ReloadShaders();
+			}
+
 			gl::UseProgram(ScreenRenderprog.ID);
+
 			auto PostTextureLoc = gl::GetUniformLocation(ScreenRenderprog.ID, "Texture");
-//			Assert(PostTextureLoc >= 0);
 			gl::Uniform1i(PostTextureLoc, PostTextureUnit);
+
+			auto TimeLoc = gl::GetUniformLocation(ScreenRenderprog.ID, "Time");
+			gl::Uniform1f(TimeLoc, TimeSinceStart);
+
+			auto ResolutionLoc = gl::GetUniformLocation(ScreenRenderprog.ID, "Resolution");
+			gl::Uniform2f(ResolutionLoc, ScreenDimension.x, ScreenDimension.y);
 
 			gl::BindVertexArray(ScreenQuad.VAO);
 			gl::DrawElements(gl::TRIANGLES, 6, gl::UNSIGNED_SHORT, nullptr);
 		}
-#else
-		gl::BindFramebuffer(gl::READ_FRAMEBUFFER, IntermediateFramebuffer.ID);
-		gl::BindFramebuffer(gl::DRAW_FRAMEBUFFER, 0);
-		gl::BlitFramebuffer(0, 0, ScreenDimension.x, ScreenDimension.y, 0, 0, ScreenDimension.x, ScreenDimension.y, gl::COLOR_BUFFER_BIT, gl::NEAREST);
-#endif
 
         glfwSwapBuffers(Window);
 		Input.EndFrame();

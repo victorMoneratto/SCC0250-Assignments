@@ -25,10 +25,10 @@ struct quad_vertices {
 		} QuadVertices[] =
 		{
 			// Position			// TexCoords
-			{ { -.5f, +.5f },	{ 0.f, 1.f } },
 			{ { -.5f, -.5f },	{ 0.f, 0.f } },
-			{ { +.5f, -.5f },	{ 1.f, 0.f } },
+			{ { -.5f, +.5f },	{ 0.f, 1.f } },
 			{ { +.5f, +.5f },	{ 1.f, 1.f } },
+			{ { +.5f, -.5f },	{ 1.f, 0.f } },
 		};
 
 		GLushort QuadIndices[] = {
