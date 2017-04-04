@@ -15,9 +15,10 @@ struct texture {
 	std::string Path;
 
 	texture(std::string Path = "") 
-		: ID{ (uint)-1 }, Path{ Path }
+		: ID{ (uint)-1 }
 		, Width{ 0 }, Height{ 0 }
-		, NumChannels{ 0 } {}
+		, NumChannels{ 0 }
+		, Path{ Path }{}
 
 	inline bool Load() {
 		if (Path.empty()) { return false; }

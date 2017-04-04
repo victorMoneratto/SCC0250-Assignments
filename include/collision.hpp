@@ -63,4 +63,4 @@ inline auto CircleInsideRect(glm::vec2 CircleCenter, float CircleRadius, glm::ve
 	DoAxis(CircleTop, CircleBottom, RectTop, RectBottom, Result.Inside.y, Result.LeavingDirection.y);
 
 	return Result;
-};
+}

@@ -37,6 +37,6 @@ void main() {
 
 	vec2 Offset = 20 * vec2(UV/Resolution) * (Distortion-.5) * 2;
 	Color = texture(Texture, UV+Offset);
-	Color.rgb += vec3(.05*Distortion);
+	Color.rgb += vec3(.1*Distortion);
 	Color.a = 1;
 }

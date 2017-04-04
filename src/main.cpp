@@ -372,7 +372,7 @@ void GLFWErrorCallback(int Error, const char* Desc) {
 	LogError("[GLFW] Error %d: %s\n", Error, Desc);
 
 	Assert(!"GLFW Error");
-};
+}
 
 void APIENTRY GLErrorLog(GLenum Source, GLenum Type, GLuint /*ID*/, GLenum Severity,
 	GLsizei /*Length*/, const GLchar *Message, const void * /*UserParam*/) {

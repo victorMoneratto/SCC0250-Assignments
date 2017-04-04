@@ -24,26 +24,16 @@ struct mouse_state {
 	std::array<b8, 8> Pressed;
 };
 
-template <typename state, uint N>
+template <typename state>
 struct captured_state {
-	StaticAssert(N >= 2);
-
-	union {
-		std::array<state, N> States;
-
-		struct {
-			mouse_state Now;
-			mouse_state Prev;
-		};
-	};
-
-	inline captured_state() : States{} {}
+		mouse_state Now;
+		mouse_state Prev;
 };
 
 static struct input {
 	static constexpr uint NumCaptureFrames = 2;
 
-	captured_state<mouse_state, NumCaptureFrames> Mouse;
+	captured_state<mouse_state> Mouse;
 
 	bool IsDown(mouse_button Button) const;
 	bool IsUp(mouse_button Button) const;
@@ -55,9 +45,7 @@ static struct input {
 } Input;
 
 inline void input::EndFrame() {
-	for (uint iState = 0; iState < Mouse.States.size() - 1; ++iState) {
-		Mouse.States[iState + 1] = Mouse.States[iState];
-	}
+	Mouse.Prev = Mouse.Now;
 }
 
 inline bool input::IsDown(mouse_button Button) const {

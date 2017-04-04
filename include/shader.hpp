@@ -33,7 +33,7 @@ struct render_program {
 };
 
 inline render_program::render_program() : ID{INVALID_ID}, Shaders{}, ShaderPaths{} {
-    for (auto i = 0; i < shader_stage::TOTAL; ++i) {
+    for (uint i = 0; i < shader_stage::TOTAL; ++i) {
         Shaders[i] = INVALID_ID;
         ShaderPaths[i] = "";
     }
