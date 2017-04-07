@@ -24,24 +24,29 @@ inline default_framebuffer::default_framebuffer(glm::ivec2 Size)
 		, DepthStencilBuffer{INVALID_ID}
 		, Size{Size} {
 
+	// Create FBO
 	gl::GenFramebuffers(1, &ID);
 	gl::BindFramebuffer(gl::FRAMEBUFFER, ID);
 //	defer{ gl::BindFramebuffer(gl::FRAMEBUFFER, 0); };
 
+    // Bind color texture
 	gl::GenTextures(1, &ColorTexture);
 	gl::BindTexture(gl::TEXTURE_2D, ColorTexture);
 //	defer{ gl::BindTexture(gl::TEXTURE_2D, 0); };
 
+    // Color texture parameters
 	gl::TexImage2D(gl::TEXTURE_2D, 0, gl::RGB16F, Size.x, Size.y, 0, gl::RGB, gl::UNSIGNED_BYTE, nullptr);
 	gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::LINEAR);
 	gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::LINEAR);
 	gl::FramebufferTexture2D(gl::FRAMEBUFFER, gl::COLOR_ATTACHMENT0, gl::TEXTURE_2D, ColorTexture, 0);
 
+    // Bind depth stencil buffer
 	gl::GenRenderbuffers(1, &DepthStencilBuffer);
 	gl::BindRenderbuffer(gl::RENDERBUFFER, DepthStencilBuffer);
 //	defer{ gl::BindRenderbuffer(gl::RENDERBUFFER, 0); };
 	gl::RenderbufferStorage(gl::RENDERBUFFER, gl::DEPTH24_STENCIL8, Size.x, Size.y);
 
+    // Check framebuffer completeness
 	if (gl::CheckFramebufferStatus(gl::FRAMEBUFFER) != gl::FRAMEBUFFER_COMPLETE) {
 		Assert(!"Fullscreen framebuffer is not Complete");
 	}

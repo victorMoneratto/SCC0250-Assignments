@@ -35,7 +35,7 @@ struct fish {
 
 	// Linear movement speed
 	f32 Speed;
-	static constexpr f32 MinSpeed = 500.f;
+	static constexpr f32 MinSpeed = 250.f;
 	static constexpr f32 MaxSpeed = 1000.f;
 	
 	// Angular speed
@@ -97,18 +97,16 @@ int main() {
 		glfwSetWindowTitle(Window, Title);
 	}
 
-#if 1
+#if DEBUGGING
 	if (gl::exts::var_KHR_debug) {
 		int ContextFlags;
 		gl::GetIntegerv(gl::CONTEXT_FLAGS, &ContextFlags);
 		if (ContextFlags & gl::CONTEXT_FLAG_DEBUG_BIT) {
 			gl::DebugMessageCallback(GLErrorLog, nullptr);
-		}
-		else { LogError("Not in a OpenGL debugging context\n"); }
+		} else { LogError("No debugging callback due to OpenGL context not set to debug\n"); }
 
 		gl::Enable(gl::DEBUG_OUTPUT_SYNCHRONOUS);
-	}
-	else { LogError("KHR_DEBUG was not found\n"); }
+	} else { LogError("KHR_DEBUG was not found\n"); }
 #endif
 
 	// We want to be always drawing to the entire framebuffer
@@ -120,11 +118,11 @@ int main() {
 		ScreenDimension = ScreenDimensionInt;
 	}
 
-	// Dont take vsync into account
-	glfwSwapInterval(0);
+	// Enable vsync
+//    glfwSwapInterval(1);
 
 	// Enable backface culling
-//	gl::Enable(gl::CULL_FACE);
+	gl::Enable(gl::CULL_FACE);
 	gl::FrontFace(gl::CCW);
 	gl::CullFace(gl::BACK);
 
@@ -138,6 +136,7 @@ int main() {
 		fish{ transform{glm::vec3{ ScreenDimension.x *.75f, ScreenDimension.y *.25f, 0.f }}, "content/fish2.png" }
 	};
 
+    // Initialize fishes
 	for(auto& Quad : Fishes) {
 		Quad.Speed = glm::linearRand(fish::MinSpeed, fish::MaxSpeed);
 		if(Quad.Texture.Load()) {
@@ -167,7 +166,6 @@ int main() {
 	default_framebuffer IntermediateFramebuffer{glm::ivec2{ScreenDimension}};
 
 	// Intermediate quad
-// 
 	quad_vertices ScreenQuad{ transform{ glm::vec3{0}, glm::vec3{2.f} } };
 
 	// Intermediate renderprog
@@ -218,7 +216,7 @@ int main() {
 
 			// Take angle from direction
 			float Angle = glm::atan(Fish.Direction.y, Fish.Direction.x);
-			auto ConstantInterpAngle = [](float Current, float Target, float AngularSpeed, float DeltaTime) -> float{
+			auto ConstantInterpAngle = [](float Current, float Target, float AngularSpeed, float dt) -> float{
 				float Result;
 
 				auto DeltaAngle0 = Target - Current;			// Common case
@@ -229,7 +227,7 @@ int main() {
 				auto DeltaAngle = glm::abs(DeltaAngle0) < glm::abs(DeltaAngle1)? DeltaAngle0 : DeltaAngle1;
 				DeltaAngle = glm::abs(DeltaAngle) < glm::abs(DeltaAngle2) ? DeltaAngle : DeltaAngle2;
 
-				auto MaxDeltaAngle = AngularSpeed * DeltaTime;
+				auto MaxDeltaAngle = AngularSpeed * dt;
 				
 				Result = Current + glm::clamp(DeltaAngle, -MaxDeltaAngle, MaxDeltaAngle);
 				if(glm::abs(Result) > Pi) {
@@ -337,17 +335,22 @@ int main() {
 			gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
 			gl::ClearColor(0.f, 0.f, 1.f, 1.f);
 			gl::Clear(gl::COLOR_BUFFER_BIT);
-	
+
+            // Enable texture unit
 			const uint PostTextureUnit = 0;
 			gl::ActiveTexture(gl::TEXTURE0 + PostTextureUnit);
 			gl::BindTexture(gl::TEXTURE_2D, IntermediateFramebuffer.ColorTexture);
 
+#if DEBUGGING
+            // Reload shaders
 			if(glfwGetKey(Window, GLFW_KEY_INSERT) == GLFW_PRESS) {
 				ScreenRenderprog.ReloadShaders();
 			}
+#endif
 
 			gl::UseProgram(ScreenRenderprog.ID);
 
+            // Pass uniforms
 			auto PostTextureLoc = gl::GetUniformLocation(ScreenRenderprog.ID, "Texture");
 			gl::Uniform1i(PostTextureLoc, PostTextureUnit);
 
@@ -357,6 +360,7 @@ int main() {
 			auto ResolutionLoc = gl::GetUniformLocation(ScreenRenderprog.ID, "Resolution");
 			gl::Uniform2f(ResolutionLoc, ScreenDimension.x, ScreenDimension.y);
 
+            // Draw
 			gl::BindVertexArray(ScreenQuad.VAO);
 			gl::DrawElements(gl::TRIANGLES, 6, gl::UNSIGNED_SHORT, nullptr);
 		}

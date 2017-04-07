@@ -1,5 +1,7 @@
 third/
 content/
+build/
+cmake-build-debug/
 
 ### C++ ###
 # Prerequisites

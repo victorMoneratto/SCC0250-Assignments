@@ -35,7 +35,7 @@ void main() {
 
 	float Distortion = Wave(FragCoords/Resolution.x, 5, 200);
 
-	vec2 Offset = 20 * vec2(UV/Resolution) * (Distortion-.5) * 2;
+	vec2 Offset = 20 * vec2(UV/Resolution) * ((1-Distortion)-.5) * 2;
 	Color = texture(Texture, UV+Offset);
 	Color.rgb += vec3(.1*Distortion);
 	Color.a = 1;
