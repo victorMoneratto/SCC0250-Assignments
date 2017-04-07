@@ -21,7 +21,7 @@ enum class mouse_button : uint {
 struct mouse_state {
 	glm::vec2 Pos;
 
-	std::array<b8, 8> Pressed;
+	std::array<bool8, 8> Pressed;
 };
 
 template <typename state>
@@ -35,10 +35,10 @@ static struct input {
 
 	captured_state<mouse_state> Mouse;
 
-	bool IsDown(mouse_button Button) const;
-	bool IsUp(mouse_button Button) const;
-	bool JustDown(mouse_button Button) const;
-	bool JustUp(mouse_button Button) const;
+	bool8 IsDown(mouse_button Button) const;
+	bool8 IsUp(mouse_button Button) const;
+	bool8 JustDown(mouse_button Button) const;
+	bool8 JustUp(mouse_button Button) const;
 
 	void EndFrame();
 
@@ -48,22 +48,22 @@ inline void input::EndFrame() {
 	Mouse.Prev = Mouse.Now;
 }
 
-inline bool input::IsDown(mouse_button Button) const {
+inline bool8 input::IsDown(mouse_button Button) const {
 	auto Index = (uint)Button;
 	return Mouse.Now.Pressed[Index];
 }
 
-inline bool input::IsUp(mouse_button Button) const {
+inline bool8 input::IsUp(mouse_button Button) const {
 	auto Index = (uint)Button;
 	return Mouse.Now.Pressed[Index];
 }
 
-inline bool input::JustDown(mouse_button Button) const {
+inline bool8 input::JustDown(mouse_button Button) const {
 	auto Index = (uint) Button;
 	return Mouse.Now.Pressed[Index] && !Mouse.Prev.Pressed[Index];
 }
 
-inline bool input::JustUp(mouse_button Button) const {
+inline bool8 input::JustUp(mouse_button Button) const {
 	auto Index = (uint)Button;
 	return Mouse.Now.Pressed[Index] && !Mouse.Prev.Pressed[Index];
 }

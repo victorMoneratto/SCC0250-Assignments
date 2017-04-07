@@ -35,8 +35,6 @@ struct fish {
 
 	// Linear movement speed
 	f32 Speed;
-	static constexpr f32 MinSpeed = 250.f;
-	static constexpr f32 MaxSpeed = 1000.f;
 	
 	// Angular speed
 	static constexpr f32 AngularSpeed = 5.f*Pi;
@@ -49,12 +47,11 @@ struct fish {
 	// texture unit to bound texture
 	static constexpr uint TextureUnit = 0;
 
-	explicit fish(transform Transform, std::string TexturePath)
+	explicit fish(transform Transform, std::string TexturePath, f32 Speed)
 		: Transform{Transform}
 		, Direction{glm::vec3{0.f}}
-		, Speed{0}
-		, Texture{ TexturePath } {
-	}
+		, Speed{Speed}
+		, Texture{ TexturePath } { }
 };
 int main() {
 	// Seed entropy
@@ -119,10 +116,10 @@ int main() {
 	}
 
 	// Enable vsync
-//    glfwSwapInterval(1);
+    glfwSwapInterval(1);
 
 	// Enable backface culling
-	gl::Enable(gl::CULL_FACE);
+//	gl::Enable(gl::CULL_FACE);
 	gl::FrontFace(gl::CCW);
 	gl::CullFace(gl::BACK);
 
@@ -131,20 +128,23 @@ int main() {
 	gl::BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA);
 
 	std::array<fish, 3> Fishes = {
-		fish{ transform{glm::vec3{ ScreenDimension.x *.25f, ScreenDimension.y *.25f, 0.f }}, "content/fish0.png" },
-		fish{ transform{glm::vec3{ ScreenDimension.x *.50f, ScreenDimension.y *.75f, 0.f }}, "content/fish1.png" },
-		fish{ transform{glm::vec3{ ScreenDimension.x *.75f, ScreenDimension.y *.25f, 0.f }}, "content/fish2.png" }
+		fish{ transform{glm::vec3{ ScreenDimension.x *.25f, ScreenDimension.y *.25f, 0.f }}, "content/fish0.png", 1000 },
+		fish{ transform{glm::vec3{ ScreenDimension.x *.50f, ScreenDimension.y *.75f, 0.f }}, "content/fish1.png", 300 },
+		fish{ transform{glm::vec3{ ScreenDimension.x *.75f, ScreenDimension.y *.25f, 0.f }}, "content/fish2.png", 500 }
 	};
 
     // Initialize fishes
-	for(auto& Quad : Fishes) {
-		Quad.Speed = glm::linearRand(fish::MinSpeed, fish::MaxSpeed);
-		if(Quad.Texture.Load()) {
-				Quad.Transform.Scale = glm::vec3{ Quad.Texture.Width, Quad.Texture.Height, 1.f } * .5f;
+	for (auto iFish = 0U; iFish < Fishes.size(); ++iFish) {
+		auto& Fish = Fishes[iFish];
+		if (Fish.Texture.Load()) {
+			Fish.Transform.Scale = glm::vec3{ Fish.Texture.Width * .5f, Fish.Texture.Height * .5f, 1 };
 		} else {
-			LogError("Failed loading texture: %s", Quad.Texture.Path.c_str());
+			LogError("Failed loading texture: %s", Fish.Texture.Path.c_str());
 		}
 	}
+
+	// At the last moment we decided to force fish1 to be bigger :D
+	Fishes[1].Transform.Scale = glm::vec3{ Fishes[1].Texture.Width, Fishes[1].Texture.Height, 1 };
 
 	// Create VAO for a simple centered quad
 	quad_vertices FishQuad{};
@@ -184,6 +184,11 @@ int main() {
     while(!glfwWindowShouldClose(Window)) {
     	// Handle OS events
 		glfwPollEvents();
+
+		if (glfwGetKey(Window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
+			glfwSetWindowShouldClose(Window, true);
+			continue;
+		}
 
 		/////////////////////////////////
 		// UPDATE LOGIC
@@ -298,10 +303,7 @@ int main() {
 			gl::ActiveTexture(gl::TEXTURE0 + fish::TextureUnit);
 			if (Quad.Texture.ID != texture::INVALID_ID) {
 				gl::BindTexture(gl::TEXTURE_2D, Quad.Texture.ID);
-			}
-			else {
-				gl::BindTexture(gl::TEXTURE_2D, 0);
-			}
+			} else { gl::BindTexture(gl::TEXTURE_2D, 0); }
 
 			auto Model = Quad.Transform.Calculate();
 			DrawQuad(Model);

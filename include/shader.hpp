@@ -25,7 +25,7 @@ struct render_program {
 
     ~render_program();
 
-    bool LoadShaders();
+    bool32 LoadShaders();
 
     void KillShaders();
 
@@ -44,7 +44,7 @@ inline render_program::~render_program() {
     if (ID != INVALID_ID) gl::DeleteProgram(ID);
 }
 
-inline bool render_program::LoadShaders() {
+inline bool32 render_program::LoadShaders() {
     char Log[100];
 
     if (ID == INVALID_ID) { ID = gl::CreateProgram(); }
@@ -85,7 +85,7 @@ inline bool render_program::LoadShaders() {
         fprintf(stderr, "Error linking shader: %s\n", Log);
     }
 
-    return (bool) Success;
+    return (bool32) Success;
 }
 
 inline void render_program::KillShaders() {
