@@ -3,7 +3,9 @@
 #include <common.hpp>
 
 #include <fstream>
+#if MSVC
 #include <sstream>
+#endif
 
 inline std::string ReadFile(std::string FileName) {
 
@@ -12,7 +14,7 @@ inline std::string ReadFile(std::string FileName) {
 
 	std::string Result;
 
-#ifdef MSVC
+#if MSVC
 	struct stat Stat;
 	if (stat(FileName.c_str(), &Stat) != -1) {
 		Result.reserve(Stat.st_size);
@@ -30,10 +32,3 @@ inline std::string ReadFile(std::string FileName) {
 
 	return Result;
 }
-
-#ifdef MSVC
-#include <direct.h>
-inline char* GetCurrentWorkingDirectory() {
-	return _getcwd(nullptr, 0);
-}
-#endif

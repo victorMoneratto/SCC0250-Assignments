@@ -7,55 +7,24 @@
 #include <file.hpp>
 #include <shader.hpp>
 #include <texture.hpp>
+#include <cubemap.hpp>
 #include <transform.hpp>
-#include <collision.hpp>
+#include <camera.hpp>
 #include <input.hpp>
-#include <quad.hpp>
 #include <framebuffer.hpp>
+#include <mesh.hpp>
 
-//GLM
-#include <glm/gtc/random.hpp>
-#include <glm/gtx/euler_angles.inl>
-
-// rand
-#include <cstdlib>
-#include <ctime>
+#include <glm/gtx/euler_angles.hpp>
 
 void GLFWErrorCallback(int Error, const char* Desc);
 
 void APIENTRY GLErrorLog(GLenum Source, GLenum Type, GLuint ID, GLenum Severity,
 	GLsizei Length, const GLchar *Message, const void * UserParam);
 
-struct fish {
-	// Position, Scaling and Rotation
-	transform Transform;
 
-	// noramlized movement direction
-	glm::vec3 Direction;
+GLFWwindow* Window;
 
-	// Linear movement speed
-	f32 Speed;
-	
-	// Angular speed
-	static constexpr f32 AngularSpeed = 5.f*Pi;
-
-	// result of "collision" between bounding circle and screen
-	circle_inside_rect InsideScreen;
-
-	// Texture data
-	texture Texture;
-	// texture unit to bound texture
-	static constexpr uint TextureUnit = 0;
-
-	explicit fish(transform Transform, std::string TexturePath, f32 Speed)
-		: Transform{Transform}
-		, Direction{glm::vec3{0.f}}
-		, Speed{Speed}
-		, Texture{ TexturePath } { }
-};
 int main() {
-	// Seed entropy
-	std::srand((uint)time(nullptr));
 
 	// Initialize glfw systems
 	glfwInit();
@@ -72,13 +41,16 @@ int main() {
 	glfwWindowHint(GLFW_RESIZABLE, false);
 
 	// Create a window of this dimension
-	glm::vec2 ScreenDimension = { 1280, 720 };
-	auto Window = glfwCreateWindow((int)ScreenDimension.x, (int)ScreenDimension.y, "Porogarama", nullptr, nullptr);
+	vec2 ScreenDimension = { 1280, 720 };
+	Window = glfwCreateWindow((int)ScreenDimension.x, (int)ScreenDimension.y, "Porogarama", nullptr, nullptr);
 	Assert(Window);
 
 	// Set input callbacks
+	Input.Initialize();
+	defer{ Input.Shutdown(); };
 	glfwSetMouseButtonCallback(Window, MouseButtonCallback);
 	glfwSetCursorPosCallback(Window, CursorPosCallback);
+	glfwSetInputMode(Window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
 	// Load OpenGL
 	glfwMakeContextCurrent(Window);
@@ -89,7 +61,7 @@ int main() {
 	// Show info on window title
 	{
 		char Title[100];
-		auto Renderer = gl::GetString(gl::RENDERER);
+		auto Renderer = (char*) gl::GetString(gl::RENDERER);
 		sprintf(Title, "Porogaramu (OpenGL %d.%d) [%s]", gl::sys::GetMajorVersion(), gl::sys::GetMinorVersion(), Renderer);
 		glfwSetWindowTitle(Window, Title);
 	}
@@ -118,65 +90,93 @@ int main() {
 	// Enable vsync
     glfwSwapInterval(1);
 
+#if 1
 	// Enable backface culling
-//	gl::Enable(gl::CULL_FACE);
+	gl::Enable(gl::CULL_FACE);
 	gl::FrontFace(gl::CCW);
 	gl::CullFace(gl::BACK);
+#endif
 
+#if 0
 	// Enable alpha blending
 	gl::Enable(gl::BLEND);
 	gl::BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA);
+#endif
 
-	std::array<fish, 3> Fishes = {
-		fish{ transform{glm::vec3{ ScreenDimension.x *.25f, ScreenDimension.y *.25f, 0.f }}, "content/fish0.png", 1000 },
-		fish{ transform{glm::vec3{ ScreenDimension.x *.50f, ScreenDimension.y *.75f, 0.f }}, "content/fish1.png", 300 },
-		fish{ transform{glm::vec3{ ScreenDimension.x *.75f, ScreenDimension.y *.25f, 0.f }}, "content/fish2.png", 500 }
-	};
+	//////////////////////////////////////
+	// RENDER PROGRAMS (aka shaders)
+	/////////////////////////////////////
 
-    // Initialize fishes
-	for (auto iFish = 0U; iFish < Fishes.size(); ++iFish) {
-		auto& Fish = Fishes[iFish];
-		if (Fish.Texture.Load()) {
-			Fish.Transform.Scale = glm::vec3{ Fish.Texture.Width * .5f, Fish.Texture.Height * .5f, 1 };
-		} else {
-			LogError("Failed loading texture: %s", Fish.Texture.Path.c_str());
-		}
-	}
+	// Mesh
+	render_program MeshRenderProg{};
+	MeshRenderProg.ShaderPaths[shader_stage::Vertex] = "shader/mesh.vert";
+	MeshRenderProg.ShaderPaths[shader_stage::Fragment] = "shader/mesh.frag";
+	if(!MeshRenderProg.LoadShaders()) {}
 
-	// At the last moment we decided to force fish1 to be bigger :D
-	Fishes[1].Transform.Scale = glm::vec3{ Fishes[1].Texture.Width, Fishes[1].Texture.Height, 1 };
+	// Mesh normals
+	render_program NormalsRenderProg{};
+	NormalsRenderProg.ShaderPaths[shader_stage::Vertex] = "shader/mesh.vert";
+	NormalsRenderProg.ShaderPaths[shader_stage::Geometry] = "shader/normals.geom";
+	NormalsRenderProg.ShaderPaths[shader_stage::Fragment] = "shader/mesh.frag";
+	if (!NormalsRenderProg.LoadShaders()) {}
 
-	// Create VAO for a simple centered quad
-	quad_vertices FishQuad{};
+	// Skybox
+	render_program SkyRenderProg{};
+	SkyRenderProg.ShaderPaths[shader_stage::Vertex] = "shader/sky.vert";
+	SkyRenderProg.ShaderPaths[shader_stage::Fragment] = "shader/sky.frag";
+	if (!SkyRenderProg.LoadShaders()) {}
 
-	// Create renderprogs and load shaders
-	render_program FishRenderprog{};
-	FishRenderprog.ShaderPaths[shader_stage::Vertex] = "shader/quad.vert";
-	FishRenderprog.ShaderPaths[shader_stage::Fragment] = "shader/quad.frag";
-	if(!FishRenderprog.LoadShaders()) {}
+	//Post Process
+	render_program ScreenRenderProg{};
+	ScreenRenderProg.ShaderPaths[shader_stage::Vertex] = "shader/postprocess.vert";
+	ScreenRenderProg.ShaderPaths[shader_stage::Fragment] = "shader/postprocess.frag";
+	if (!ScreenRenderProg.LoadShaders()) {}
 
 	// We never move the camera in this assignment
 	// transformation to view space equals identity and can be ignored
-	//auto View = glm::mat4{};
+	auto View = glm::translate(mat4{}, vec3{ 0, 0, -1 });
 	
+	const auto NearZ = 0.01f, FarZ = 100.0f;
+#if 0
 	// Build orthographic projection
-	auto Projection = glm::ortho(0.f, ScreenDimension.x, ScreenDimension.y, 0.f);
+	vec2 OrthoHalfSize = 3.f * vec2{ ScreenDimension.x / ScreenDimension.y, 1.0f };
+	auto Projection = glm::ortho(-OrthoHalfSize.x, OrthoHalfSize.x, -OrthoHalfSize.y, OrthoHalfSize.y, NearZ, FarZ);
+#else
+	const auto Fovy = glm::radians(90.f);
+	auto Projection = glm::perspectiveFov(Fovy, ScreenDimension.x, ScreenDimension.y, NearZ, FarZ);
+#endif
 
 	// Intermediate framebuffer
 	default_framebuffer IntermediateFramebuffer{glm::ivec2{ScreenDimension}};
 
 	// Intermediate quad
-	quad_vertices ScreenQuad{ transform{ glm::vec3{0}, glm::vec3{2.f} } };
+	mesh ScreenQuad{GenerateQuadTriangles(transform{ vec3{ 0 }, vec3{ 2.f } }), gl::TRIANGLES};
+	defer { ScreenQuad.Destroy(); };
 
-	// Intermediate renderprog
-	render_program ScreenRenderprog{};
-	ScreenRenderprog.ShaderPaths[shader_stage::Vertex] = "shader/post.vert";
-	ScreenRenderprog.ShaderPaths[shader_stage::Fragment] = "shader/post.frag";
-	if (!ScreenRenderprog.LoadShaders()) {}
+	mesh Arrow{ GenerateArrowTriangles(.05f, .1f, .6f, .4f, 16), gl::TRIANGLES };
+	defer{ Arrow.Destroy(); };
+
+	mesh Cube{ GenerateCubeTriangles(/*transform{vec3{0.f}, vec3{2.f}}*/), gl::TRIANGLES };
+	defer{ Cube.Destroy(); };
+
+	mesh Cone{ GenerateConeTriangles(.5f, 1.f, 4), gl::TRIANGLES };
+	defer{ Cone.Destroy(); };
+
+	texture CubeTexture{ "content/box.jpg" };
+	Assert(CubeTexture.Load());
+
+	texture TriangleTexture{ "content/triangle.tga" };
+	Assert(TriangleTexture.Load());
+
+	auto Skybox = MakeCubemap("content/skyboxes/day_", "tga", true);
+	Assert(Skybox.ID > 0);
 
 	// timing from start of simulation
 	float StartTime = (float) glfwGetTime();
 	float LastTime = (float) StartTime;
+
+	camera Camera{ScreenDimension};
+	Camera.Transform.Position = vec3(0.f, 1.5f, 3.5f);
 
 	//////////////////////////////////
 	// INTERACTION LOOP
@@ -185,7 +185,7 @@ int main() {
     	// Handle OS events
 		glfwPollEvents();
 
-		if (glfwGetKey(Window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
+		if (Input.IsDown(GLFW_KEY_ESCAPE)) {
 			glfwSetWindowShouldClose(Window, true);
 			continue;
 		}
@@ -193,146 +193,231 @@ int main() {
 		/////////////////////////////////
 		// UPDATE LOGIC
 		/////////////////////////////////
+
+		Input.StartFrame();
 	
     	// Per-frame timing
 		float TimeSinceStart = (float)glfwGetTime() - StartTime;
 		float DeltaTime = (float)glfwGetTime() - LastTime;
 		LastTime = (float)glfwGetTime();
 
-		for (uint iFish = 0; iFish < Fishes.size(); ++iFish) {
-			auto& Fish = Fishes[iFish];
-
-			// Left click makes the fishes go after the cursor
-			if(Input.JustDown(mouse_button::Left)) {
-				auto Offset = glm::vec3{ Input.Mouse.Now.Pos, 0.f } - Fish.Transform.Position;
-				auto DirectionLength = glm::length(Offset);
-				if (DirectionLength >= .1f) {
-					// Set direction (with entropy)
-					Fish.Direction = glm::normalize(Offset);
-				}
-
-			// Right click makes the fishes take a random direction
-			} else if(Input.JustDown(mouse_button::Right)) {
-				Fish.Direction = glm::vec3{ glm::circularRand(1.f), 0.f };
-			}
-	
-			// Simple euler integration for position
-			Fish.Transform.Position += Fish.Direction * Fish.Speed * DeltaTime;
-
-			// Take angle from direction
-			float Angle = glm::atan(Fish.Direction.y, Fish.Direction.x);
-			auto ConstantInterpAngle = [](float Current, float Target, float AngularSpeed, float dt) -> float{
-				float Result;
-
-				auto DeltaAngle0 = Target - Current;			// Common case
-				auto DeltaAngle1 = Target - Current - (2.f*Pi); // Going from +Pi to -Pi
-				auto DeltaAngle2 = Target - Current + (2.f*Pi); // Going from -Pi to +Pi
-				
-				// Take the least of the three is absolute
-				auto DeltaAngle = glm::abs(DeltaAngle0) < glm::abs(DeltaAngle1)? DeltaAngle0 : DeltaAngle1;
-				DeltaAngle = glm::abs(DeltaAngle) < glm::abs(DeltaAngle2) ? DeltaAngle : DeltaAngle2;
-
-				auto MaxDeltaAngle = AngularSpeed * dt;
-				
-				Result = Current + glm::clamp(DeltaAngle, -MaxDeltaAngle, MaxDeltaAngle);
-				if(glm::abs(Result) > Pi) {
-					Result -= glm::sign(Result) * 2.f * Pi;
-				}
-
-				return Result;
-			};
-			Fish.Transform.Rotation.z = ConstantInterpAngle(Fish.Transform.Rotation.z, Angle, fish::AngularSpeed, DeltaTime);
-
-			// Fish bounding-circle x Rect collision
-			auto CircleCenter = Fish.Transform.Position;
-			auto CircleRadius = (float)glm::sqrt(2) / 2.f * glm::max(Fish.Transform.Scale.x, Fish.Transform.Scale.y);
-			Fish.InsideScreen = CircleInsideRect(CircleCenter, CircleRadius, ScreenDimension * .5f, ScreenDimension * .5f);
-
-			// If fish is completely out of the screen in x, move it back
-			if (Fish.InsideScreen.Inside.x == inside::Not) {
-				Fish.Transform.Position.x += -Fish.InsideScreen.LeavingDirection.x * ScreenDimension.x;
-				Fish.InsideScreen.Inside.x = inside::Completely;
+		{
+			// Camera movement
+			vec3 LocalMoveDir = vec3{ 0.f };
+			if (Input.IsDown(GLFW_KEY_A)) { LocalMoveDir.x -= 1.f; }
+			if (Input.IsDown(GLFW_KEY_D)) { LocalMoveDir.x += 1.f; }
+			if (Input.IsDown(GLFW_KEY_W)) { LocalMoveDir.z -= 1.f; }
+			if (Input.IsDown(GLFW_KEY_S)) { LocalMoveDir.z += 1.f; }
+			if (Input.IsDown(GLFW_KEY_SPACE)) { LocalMoveDir.y += 1.f; }
+			if (Input.IsDown(GLFW_KEY_LEFT_SHIFT)) { LocalMoveDir.y -= 1.f; }
+			if(glm::dot(LocalMoveDir, LocalMoveDir) > 0.f) {
+				LocalMoveDir = glm::normalize(LocalMoveDir);
 			}
 
-			// If fish is completely out of the screen in y, move it back
-			if (Fish.InsideScreen.Inside.y == inside::Not) {
-				Fish.Transform.Position.y += -Fish.InsideScreen.LeavingDirection.y * ScreenDimension.y;
-				Fish.InsideScreen.Inside.y = inside::Completely;
-			}
-	
+			auto MoveDir = glm::rotate(Camera.Transform.Rotation, LocalMoveDir);
+			
+			const auto Speed = 2.5f;
+			Camera.Transform.Position += MoveDir * Speed * DeltaTime;
+			
+			const auto& MouseDelta = Input.MouseDelta();
+			const auto AngularSpeed = .5f;
+			static vec3 CameraEulerAngles{0.f};
+			CameraEulerAngles.x -= MouseDelta.y * AngularSpeed * DeltaTime;
+			//CameraEulerAngles.x = glm::clamp(CameraEulerAngles.x, glm::radians(-89.f), glm::radians(89.0f));
+			CameraEulerAngles.y -= MouseDelta.x * AngularSpeed * DeltaTime;
+			CameraEulerAngles.z = 0.0f;
+			Camera.Transform.Rotation = glm::normalize(glm::angleAxis(CameraEulerAngles.y, vec3{0.f, 1.f, 0.f}) * glm::angleAxis(CameraEulerAngles.x, vec3{1.f, 0.f, 0.f}));
 		}
+
+		// Things moving
+		vec3 ConePosition;
+		vec3 TransformScale;
+		quat CubeRotation;
+		{
+			static float ConePositionAlpha = 0.f;
+			static float TransformScaleAlpha = 1.f;
+			static float CubeRotationAlpha = 0.f;
+
+			if (Input.IsDown(GLFW_KEY_LEFT)) { ConePositionAlpha += Pi * DeltaTime; }
+			if (Input.IsDown(GLFW_KEY_UP))	 { TransformScaleAlpha += Pi * DeltaTime; }
+			if (Input.IsDown(GLFW_KEY_DOWN)) { TransformScaleAlpha = glm::max(.1f, TransformScaleAlpha - Pi * DeltaTime); }
+			if (Input.IsDown(GLFW_KEY_RIGHT)){ CubeRotationAlpha += Pi * DeltaTime; }
+
+			ConePosition = 2.f * vec3{0.f, 1.f, 0.f} * glm::abs(glm::sin(ConePositionAlpha));
+			TransformScale = vec3{ TransformScaleAlpha };
+			CubeRotation = glm::rotate(mat4{}, CubeRotationAlpha, vec3{ 0.f, 1.f, 0.f });
+		}
+
+#if DEBUGGING
+		gl::UseProgram(0);
+		// Reload shaders
+		if (Input.IsDown(GLFW_KEY_F7)) {
+			MeshRenderProg.ReloadShaders();
+			NormalsRenderProg.ReloadShaders();
+			SkyRenderProg.ReloadShaders();
+			ScreenRenderProg.ReloadShaders();
+		}
+#endif
 
 		/////////////////////////////////
 		// DRAWING
 		/////////////////////////////////
-    	
+
+#define POSTPROCESS false
+#if POSTPROCESS
 		// Bind intermediate framebuffer
 		gl::BindFramebuffer(gl::FRAMEBUFFER, IntermediateFramebuffer.ID);
+#else
+		gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
+#endif
+
+		gl::Enable(gl::DEPTH_TEST);
+		gl::DepthMask(true);
+		gl::DepthFunc(gl::LESS);
 
 		// Clear buffers
-		const auto ClearColor = glm::vec3{ .2, .3, .65 };
+		const auto ClearColor = vec3{ .2, .3, .65 };
 		gl::ClearColor(ClearColor.r, ClearColor.g, ClearColor.b, 1.f);
-		gl::Clear(gl::COLOR_BUFFER_BIT);
+		gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
 
-		// Bind shader
-        gl::UseProgram(FishRenderprog.ID);
+		// Uniforms
+		gl::UseProgram(MeshRenderProg.ID);
+		auto MVPLoc = gl::GetUniformLocation(MeshRenderProg.ID, "MVP");
+		auto NormalMatLoc = gl::GetUniformLocation(MeshRenderProg.ID, "NormalMat");
+		auto ColorLoc = gl::GetUniformLocation(MeshRenderProg.ID, "Color");
+		auto TextureLoc = gl::GetUniformLocation(MeshRenderProg.ID, "Texture");
+		auto bSolidColorLoc = gl::GetUniformLocation(MeshRenderProg.ID, "bTexture");
 
-		// Get MVP uniform location for later
-		auto MVPLoc = gl::GetUniformLocation(FishRenderprog.ID, "MVP");
-		Assert(MVPLoc >= 0);
+		{
+			// Draw Cone
+			auto Transform = transform{ vec3{-1.f, 0.f, 0.f} + ConePosition, vec3{1.f}, glm::rotate(mat4{}, Pi/2, vec3{0.f, 0.f, 1.f}) };
+			auto MVP = Camera.ViewProjection() * Transform.ToMatrix();
+			auto NormalMat = glm::transpose(glm::inverse(MVP));
+			auto Color = vec4{1.f, 1.f, 1.f, 1.f};
+			auto TextureSampler = 0;
+			auto bSolidColor = true;
 
-    	// Set shader Texture uniform to texture unit = fish::TextureUnit
-		auto TextureLoc = gl::GetUniformLocation(FishRenderprog.ID, "Texture");
-		Assert(TextureLoc >= 0);
-		gl::Uniform1i(TextureLoc, fish::TextureUnit);
-
-		// Bind VAO
-		gl::BindVertexArray(FishQuad.VAO);
-
-		// Function to draw the fish given that VAO is bound, 
-    	// projection is set and uniform locations are valid
-		auto DrawQuad = [=](auto Model) {
-			auto MVP = Projection * Model;
 			gl::UniformMatrix4fv(MVPLoc, 1, false, glm::value_ptr(MVP));
+			gl::UniformMatrix4fv(NormalMatLoc, 1, false, glm::value_ptr(NormalMat));
+			gl::Uniform4f(ColorLoc, Color.r, Color.g, Color.b, Color.a);
+			gl::Uniform1i(TextureLoc, TextureSampler);
+			gl::Uniform1i(bSolidColorLoc, bSolidColor);
+			
+			gl::ActiveTexture(gl::TEXTURE0 + TextureSampler);
+			gl::BindTexture(gl::TEXTURE_2D, TriangleTexture.ID);
+			
+			gl::BindVertexArray(Cone.VAO);
+			Cone.Draw();
 
-			gl::DrawElements(gl::TRIANGLES, 6, gl::UNSIGNED_SHORT, nullptr);
-		};
-
-		for(auto& Quad : Fishes) {
-			// Bind proper texture to texture unit 
-			gl::ActiveTexture(gl::TEXTURE0 + fish::TextureUnit);
-			if (Quad.Texture.ID != texture::INVALID_ID) {
-				gl::BindTexture(gl::TEXTURE_2D, Quad.Texture.ID);
-			} else { gl::BindTexture(gl::TEXTURE_2D, 0); }
-
-			auto Model = Quad.Transform.Calculate();
-			DrawQuad(Model);
-
-			// For the warping effect we just translate the fish to were it should be and draw again (at most 3 times)
-			glm::tvec2<bool> DrawWarped = { Quad.InsideScreen.Inside.x != inside::Completely,
-											Quad.InsideScreen.Inside.y != inside::Completely };
-
-			if(DrawWarped.x) {
-				auto Offset = -ScreenDimension * glm::vec2{ Quad.InsideScreen.LeavingDirection.x, 0 };
-				auto WarpedModel = glm::translate(glm::mat4{}, glm::vec3{ Offset, 0.f }) * Model;
-				DrawQuad(WarpedModel);
-			}
-
-			if (DrawWarped.y) {
-				auto Offset = -ScreenDimension * glm::vec2{ 0, Quad.InsideScreen.LeavingDirection.y };
-				auto WarpedModel = glm::translate(glm::mat4{}, glm::vec3{ Offset, 0.f }) * Model;
-				DrawQuad(WarpedModel);
-			}
-
-			if(DrawWarped.x && DrawWarped.y) {
-				auto Offset = -ScreenDimension * glm::vec2{ Quad.InsideScreen.LeavingDirection.x, Quad.InsideScreen.LeavingDirection.y };
-				auto WarpedModel = glm::translate(glm::mat4{}, glm::vec3{ Offset, 0.f }) * Model;
-				DrawQuad(WarpedModel);
-			}
+			gl::BindTexture(gl::TEXTURE_2D, 0);
 		}
+
+		{
+			// Draw Cube
+			auto Transform = transform{ vec3{ 1.f, .5f, 0.f }, vec3{1}, CubeRotation };
+			auto MVP = Camera.ViewProjection() * Transform.ToMatrix();
+			auto NormalMat = glm::transpose(glm::inverse(MVP));
+			auto Color = vec4{ 1.f, 1.f, 1.f, 1.f };
+			auto TextureSampler = 0;
+			auto bSolidColor = true;
+
+			gl::UniformMatrix4fv(MVPLoc, 1, false, glm::value_ptr(MVP));
+			gl::UniformMatrix4fv(NormalMatLoc, 1, false, glm::value_ptr(NormalMat));
+			gl::Uniform4f(ColorLoc, Color.r, Color.g, Color.b, Color.a);
+			gl::Uniform1i(TextureLoc, TextureSampler);
+			gl::Uniform1i(bSolidColorLoc, bSolidColor);
+
+			gl::ActiveTexture(gl::TEXTURE0 + TextureSampler);
+			gl::BindTexture(gl::TEXTURE_2D, CubeTexture.ID);
+
+			gl::BindVertexArray(Cube.VAO);
+			Cube.Draw();
+
+			gl::BindTexture(gl::TEXTURE_2D, 0);
+		}
+
 		
+		{
+			// Draw transform widget
+			std::array<transform, 3> Model = {transform{}, transform{}, transform{}};
+			Model[0].Position = vec3{ 0.f, 2.f, 0.f };
+			Model[1].Position = vec3{ 0.f, 2.f, 0.f };
+			Model[2].Position = vec3{ 0.f, 2.f, 0.f };
+
+			Model[0].Rotation = quat{};
+			Model[1].Rotation = glm::rotate(mat4{}, glm::radians(90.f), vec3{ 0, 0, 1 });
+			Model[2].Rotation = glm::rotate(mat4{}, glm::radians(-90.f), vec3{ 0, 1, 0 });
+
+			Model[0].Scale = TransformScale;
+			Model[1].Scale = TransformScale;
+			Model[2].Scale = TransformScale;
+
+			std::array<vec3, 3> Colors = { vec3{1.f, 0.f, 0.f}, vec3{0.f, 1.f, 0.f}, vec3{0.f, 0.f, 1.f} };
+
+			gl::BindVertexArray(Arrow.VAO);
+			for (int i = 0; i < 3; ++i) {
+				auto MVP = Camera.ViewProjection() * Model[i].ToMatrix();
+				auto NormalMat = glm::transpose(glm::inverse(MVP));
+				auto Color = vec4{ Colors[i], 1.f };
+				auto bSolidColor = false;
+
+				gl::UniformMatrix4fv(MVPLoc, 1, false, glm::value_ptr(MVP));
+				gl::UniformMatrix4fv(NormalMatLoc, 1, false, glm::value_ptr(NormalMat));
+				gl::Uniform4f(ColorLoc, Color.r, Color.g, Color.b, Color.a);
+				gl::Uniform1i(bSolidColorLoc, bSolidColor);
+
+				Arrow.Draw();
+			}
+#if 0
+			gl::UseProgram(NormalsRenderProg.ID);
+			gl::Uniform3f(ColorLoc, 1.f, 1.f, 0.f);
+			for (int i = 0; i < 3; ++i) {
+				auto MVP = Camera.ViewProjection() * Rotations[i];
+				gl::UniformMatrix4fv(MVPLoc, 1, false, glm::value_ptr(MVP));
+
+				auto NormalMat = glm::transpose(glm::inverse(MVP));
+				gl::UniformMatrix4fv(NormalMatLoc, 1, false, glm::value_ptr(NormalMat));
+
+				Arrow.Draw();
+			}
+#endif
+		}
+
+#if 1
+		{
+			//Render skybox
+			gl::CullFace(gl::FRONT);
+			defer{ gl::CullFace(gl::BACK); };
+
+			gl::DepthFunc(gl::LEQUAL);	// We have to use LEQUAL because the depth buffer starts filled with 1.0, the max value
+			defer{ gl::DepthFunc(gl::LESS); };
+
+			gl::UseProgram(SkyRenderProg.ID);
+
+			auto ViewProjection = Camera.Projection() * mat4(mat3(Camera.View())); // Dirty trick to remove translation information
+			auto ViewProjectionUniform = gl::GetUniformLocation(SkyRenderProg.ID, "ViewProjection");
+			Assert(ViewProjectionUniform >= 0);
+			gl::UniformMatrix4fv(ViewProjectionUniform, 1, false, value_ptr(ViewProjection));
+
+			auto TextureUniform = gl::GetUniformLocation(SkyRenderProg.ID, "Skybox");
+			Assert(TextureUniform >= 0);
+			gl::Uniform1i(TextureUniform, 0);
+
+			gl::ActiveTexture(gl::TEXTURE0);
+			gl::BindTexture(gl::TEXTURE_CUBE_MAP, Skybox.ID);
+			defer{ gl::BindTexture(gl::TEXTURE_CUBE_MAP, 0); };
+
+			gl::BindVertexArray(Cube.VAO);
+			defer{ gl::BindVertexArray(0); };
+
+			Cube.Draw();
+		}
+#endif
+
+#if 0
     	// Draw to screen
 		{
+			gl::Disable(gl::DEPTH_TEST);
 			// Go back to screen framebuffer
 			gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
 			gl::ClearColor(0.f, 0.f, 1.f, 1.f);
@@ -343,29 +428,23 @@ int main() {
 			gl::ActiveTexture(gl::TEXTURE0 + PostTextureUnit);
 			gl::BindTexture(gl::TEXTURE_2D, IntermediateFramebuffer.ColorTexture);
 
-#if DEBUGGING
-            // Reload shaders
-			if(glfwGetKey(Window, GLFW_KEY_INSERT) == GLFW_PRESS) {
-				ScreenRenderprog.ReloadShaders();
-			}
-#endif
-
-			gl::UseProgram(ScreenRenderprog.ID);
+			gl::UseProgram(ScreenRenderProg.ID);
 
             // Pass uniforms
-			auto PostTextureLoc = gl::GetUniformLocation(ScreenRenderprog.ID, "Texture");
+			auto PostTextureLoc = gl::GetUniformLocation(ScreenRenderProg.ID, "Texture");
 			gl::Uniform1i(PostTextureLoc, PostTextureUnit);
 
-			auto TimeLoc = gl::GetUniformLocation(ScreenRenderprog.ID, "Time");
+			auto TimeLoc = gl::GetUniformLocation(ScreenRenderProg.ID, "Time");
 			gl::Uniform1f(TimeLoc, TimeSinceStart);
 
-			auto ResolutionLoc = gl::GetUniformLocation(ScreenRenderprog.ID, "Resolution");
+			auto ResolutionLoc = gl::GetUniformLocation(ScreenRenderProg.ID, "Resolution");
 			gl::Uniform2f(ResolutionLoc, ScreenDimension.x, ScreenDimension.y);
 
             // Draw
 			gl::BindVertexArray(ScreenQuad.VAO);
-			gl::DrawElements(gl::TRIANGLES, 6, gl::UNSIGNED_SHORT, nullptr);
+			ScreenQuad.Draw();
 		}
+#endif
 
         glfwSwapBuffers(Window);
 		Input.EndFrame();

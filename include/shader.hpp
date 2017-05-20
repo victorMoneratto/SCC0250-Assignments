@@ -4,12 +4,15 @@
 #include <array>
 #include <gl_33.hpp>
 
-enum shader_stage : uint {
-    Vertex = 0,
-    Fragment = 1,
-    TOTAL = 2
+namespace shader_stage {
+	enum type : uint {
+	    Vertex = 0,
+		Geometry,
+	    Fragment,
+	    TOTAL
+	};
 };
-static const uint InternalShaderTypes[] = {gl::VERTEX_SHADER, gl::FRAGMENT_SHADER};
+static const uint InternalShaderTypes[] = {gl::VERTEX_SHADER, gl::GEOMETRY_SHADER, gl::FRAGMENT_SHADER};
 
 struct render_program {
     // Invalid value for program and shader handles

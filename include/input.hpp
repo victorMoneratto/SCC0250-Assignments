@@ -1,7 +1,7 @@
 #pragma once
 #include <common.hpp>
 #include <GLFW/glfw3.h>
-#include <type_traits>
+#include <map>
 
 enum class mouse_button : uint {
 	Left = GLFW_MOUSE_BUTTON_LEFT,
@@ -19,19 +19,24 @@ enum class mouse_button : uint {
 };
 
 struct mouse_state {
-	glm::vec2 Pos;
+	vec2 Pos;
 
 	std::array<bool8, 8> Pressed;
 };
 
 template <typename state>
 struct captured_state {
-		mouse_state Now;
-		mouse_state Prev;
+		state Now;
+		state Prev;
 };
 
-static struct input {
-	static constexpr uint NumCaptureFrames = 2;
+struct input {
+	input(){}
+	~input(){}
+
+	bool Initialize();
+	bool Shutdown();
+	
 
 	captured_state<mouse_state> Mouse;
 
@@ -39,10 +44,31 @@ static struct input {
 	bool8 IsUp(mouse_button Button) const;
 	bool8 JustDown(mouse_button Button) const;
 	bool8 JustUp(mouse_button Button) const;
+	vec2 MouseDelta() const;
 
+	bool8 IsDown(int Key) const;
+	bool8 IsUp(int Key) const;
+
+	void StartFrame();
 	void EndFrame();
+};
 
-} Input;
+static input Input;
+
+inline bool input::Initialize() {
+	StartFrame();
+	Mouse.Prev.Pos = Mouse.Now.Pos;
+	return true;
+}
+
+inline bool input::Shutdown() { return true; }
+
+inline void input::StartFrame() {
+	glm::dvec2 Pos;
+	glfwGetCursorPos(Window, &Pos.x, &Pos.y);
+
+	Mouse.Now.Pos = Pos;
+}
 
 inline void input::EndFrame() {
 	Mouse.Prev = Mouse.Now;
@@ -67,6 +93,19 @@ inline bool8 input::JustUp(mouse_button Button) const {
 	auto Index = (uint)Button;
 	return Mouse.Now.Pressed[Index] && !Mouse.Prev.Pressed[Index];
 }
+
+inline vec2 input::MouseDelta() const {
+	return Mouse.Now.Pos - Mouse.Prev.Pos;
+}
+
+inline bool8 input::IsDown(int Key) const {
+	return glfwGetKey(Window, Key) == GLFW_PRESS;
+}
+
+inline bool8 input::IsUp(int Key) const {
+	return glfwGetKey(Window, Key) == GLFW_RELEASE;
+}
+
 
 void MouseButtonCallback(GLFWwindow* /*Window*/, int Button, int Action, int /*Mods*/) {
 	Input.Mouse.Now.Pressed[Button] = (Action == GLFW_PRESS);

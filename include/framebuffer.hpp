@@ -45,6 +45,7 @@ inline default_framebuffer::default_framebuffer(glm::ivec2 Size)
 	gl::BindRenderbuffer(gl::RENDERBUFFER, DepthStencilBuffer);
 //	defer{ gl::BindRenderbuffer(gl::RENDERBUFFER, 0); };
 	gl::RenderbufferStorage(gl::RENDERBUFFER, gl::DEPTH24_STENCIL8, Size.x, Size.y);
+	gl::FramebufferRenderbuffer(gl::FRAMEBUFFER, gl::DEPTH_STENCIL_ATTACHMENT, gl::RENDERBUFFER, DepthStencilBuffer);
 
     // Check framebuffer completeness
 	if (gl::CheckFramebufferStatus(gl::FRAMEBUFFER) != gl::FRAMEBUFFER_COMPLETE) {

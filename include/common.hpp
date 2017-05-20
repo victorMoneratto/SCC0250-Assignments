@@ -12,10 +12,12 @@
 #endif
 
 #ifdef _MSC_VER
-#define MSVC
+#define MSVC true
+#else 
+#define MSVC false
 #endif
 
-#ifdef MSVC
+#if MSVC
 #include <Windows.h>
 #define RaiseBreakpoint() do {if(IsDebuggerPresent()) { DebugBreak(); }} while(0)
 #else
@@ -39,23 +41,21 @@
 #include <glm/gtx/quaternion.hpp>
 
 // Signed integers
-typedef glm::int8  int8;
-typedef glm::int16 int16;
-typedef glm::int32 int32;
-typedef glm::int64 int64;
-
+using glm::int8 ;
+using glm::int16;
+using glm::int32;
+using glm::int64;
 typedef int8  i8;
 typedef int16 i16;
 typedef int32 i32;
 typedef int64 i64;
 
 // Unsigned integers
-typedef glm::uint	uint;
-typedef glm::uint8	uint8;
-typedef glm::uint16 uint16;
-typedef glm::uint32 uint32;
-typedef glm::uint64 uint64;
-
+using glm::uint;
+using glm::uint8;
+using glm::uint16;
+using glm::uint32;
+using glm::uint64;
 typedef uint8	u8;
 typedef uint16 u16;
 typedef uint32 u32;
@@ -68,25 +68,31 @@ typedef i32 bool32;
 typedef bool32 b32;
 
 // Real numbers
-typedef glm::float32 f32;
-typedef glm::float64 f64;
+using glm::float32;
+using glm::float64;
+typedef float32 f32;
+typedef float64 f64;
+
+// Algebraic types
+using glm::vec2;
+using glm::vec3;
+using glm::vec4;
+using glm::mat2;
+using glm::mat3;
+using glm::mat4;
+using glm::quat;
 
 // Memory
-typedef glm::length_t size; 
+using glm::length_t; 
+typedef length_t size;
 
 // Constants
 #include <glm/gtc/constants.hpp>
-constexpr f32 Pi = glm::pi<f32>();
-
-////////////////////
-// String
-////////////////////
-#include <string>
+constexpr float Pi = glm::pi<float>();
 
 /************************************************/
 /* TYPE INFORMATION								*/
 /************************************************/
-#include <cstddef>
 #define OffsetOf(type, Member) (offsetof(type, Member))
 #define SizeOf(exp) (sizeof(exp))
 #define AlignOf(exp) (alignof(exp))
@@ -118,3 +124,8 @@ void Log (const t& Value, const t_others& ... Others) {
 // Filename Max Size
 #define FilenameMax FILENAME_MAX
 
+#if MSVC
+#define _CRT_SECURE_NO_WARNINGS
+#endif
+
+extern GLFWwindow* Window;
