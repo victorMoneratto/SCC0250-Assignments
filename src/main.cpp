@@ -134,7 +134,7 @@ int main() {
 	SkyRenderProg.ShaderPaths[shader_stage::Fragment] = "shader/sky.frag";
 	if (!SkyRenderProg.LoadShaders()) {}
 
-	mesh Arrow{ GenerateArrowTriangles(.05f, .1f, .6f, .4f, 16), gl::TRIANGLES };
+	mesh Arrow{ GenerateArrowTriangles(.05f, .1f, .6f, .4f, 32), gl::TRIANGLES };
 	defer{ Arrow.Destroy(); };
 
 	mesh Cube{ GenerateCubeTriangles(), gl::TRIANGLES };
@@ -142,6 +142,8 @@ int main() {
 
 	mesh Cone{ GenerateConeTriangles(.5f, 1.f, 4), gl::TRIANGLES };
 	defer{ Cone.Destroy(); };
+
+	uint BlankTextureID = MakeBlankTexture();
 
 	texture CubeTexture{ "content/box.jpg" };
 	Assert(CubeTexture.Load());
@@ -262,13 +264,12 @@ int main() {
 
 		gl::Uniform3f(CameraPositionLoc, Camera.Transform.Position.x, Camera.Transform.Position.y, Camera.Transform.Position.z);
 
-		auto SetupRender = [&] (glm::mat4 Model, glm::mat4 MVP, glm::mat4 NormalMat, glm::vec4 Color, int TextureSampler, int bTexture, int Texture) {
+		auto SetupRender = [&] (glm::mat4 Model, glm::mat4 MVP, glm::mat4 NormalMat, glm::vec4 Color, int TextureSampler, int Texture) {
 			gl::UniformMatrix4fv(ModelLoc, 1, false, glm::value_ptr(Model));
 			gl::UniformMatrix4fv(MVPLoc, 1, false, glm::value_ptr(MVP));
 			gl::UniformMatrix4fv(NormalMatLoc, 1, false, glm::value_ptr(NormalMat));
 			gl::Uniform4f(ColorLoc, Color.r, Color.g, Color.b, Color.a);
 			gl::Uniform1i(TextureLoc, TextureSampler);
-			gl::Uniform1i(bTextureLoc, bTexture);
 			gl::ActiveTexture(gl::TEXTURE0 + TextureSampler);
 			gl::BindTexture(gl::TEXTURE_2D, Texture);
 		};
@@ -283,10 +284,9 @@ int main() {
 			auto NormalMat = glm::transpose(glm::inverse(Transform.ToMatrix()));
 			auto Color = vec4{1.f, 1.f, 1.f, 1.f};
 			auto TextureSampler = 0;
-			auto bTexture = true;
 			auto Texture = TriangleTexture.ID;
 
-			SetupRender(Model, MVP, NormalMat, Color, TextureSampler, bTexture, Texture);
+			SetupRender(Model, MVP, NormalMat, Color, TextureSampler, Texture);
 			
 			gl::BindVertexArray(Cone.VAO);
 			Cone.Draw();
@@ -303,10 +303,9 @@ int main() {
 			auto NormalMat = glm::transpose(glm::inverse(Transform.ToMatrix()));
 			auto Color = vec4{ 1.f, 1.f, 1.f, 1.f };
 			auto TextureSampler = 0;
-			auto bTexture = true;
 			auto Texture = CubeTexture.ID;
 
-			SetupRender(Model, MVP, NormalMat, Color, TextureSampler, bTexture, Texture);
+			SetupRender(Model, MVP, NormalMat, Color, TextureSampler, Texture);
 
 			gl::BindVertexArray(Cube.VAO);
 			Cube.Draw();
@@ -340,11 +339,10 @@ int main() {
 				auto MVP = Camera.ViewProjection() * Model;
 				auto NormalMat = glm::transpose(glm::inverse(Model));
 				auto Color = vec4{ Colors[i], 1.f };
-				auto bTexture = false;
 				auto TextureSampler = 0;
-				auto Texture = 0;
+				auto Texture = BlankTextureID;
 
-				SetupRender(Model, MVP, NormalMat, Color, TextureSampler, bTexture, Texture);
+				SetupRender(Model, MVP, NormalMat, Color, TextureSampler, Texture);
 
 				Arrow.Draw();
 			}
