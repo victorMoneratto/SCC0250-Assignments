@@ -3,9 +3,7 @@
 #include <common.hpp>
 
 #include <fstream>
-#if MSVC
 #include <sstream>
-#endif
 
 inline std::string ReadFile(std::string FileName) {
 

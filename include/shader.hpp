@@ -11,7 +11,7 @@ namespace shader_stage {
 	    Fragment,
 	    TOTAL
 	};
-};
+}
 static const uint InternalShaderTypes[] = {gl::VERTEX_SHADER, gl::GEOMETRY_SHADER, gl::FRAGMENT_SHADER};
 
 struct render_program {

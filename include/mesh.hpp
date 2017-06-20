@@ -72,8 +72,7 @@ struct mesh {
 	}
 };
 
-inline
-std::vector<mesh_vertex> GenerateArrowTriangles(float InnerRadius, float OuterRadius, float CilynderLen, float ConeLen, int NumSteps) {
+inline std::vector<mesh_vertex> GenerateArrowTriangles(float InnerRadius, float OuterRadius, float CilynderLen, float ConeLen, int NumSteps) {
 	const uint VertsPerStep = 18;
 	std::vector<mesh_vertex> Result{ NumSteps * VertsPerStep };
 

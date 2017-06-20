@@ -7,7 +7,7 @@ struct transform {
 	vec3 Scale;
 	quat Rotation; // Pitch, Yaw, Roll
 
-	explicit transform::transform(vec3 Position = vec3{ 0.f }, vec3 Scale = vec3{ 1.f }, quat Rotation = quat{})
+	explicit transform(vec3 Position = vec3{ 0.f }, vec3 Scale = vec3{ 1.f }, quat Rotation = quat{})
 		: Position{ Position }
 		, Scale{ Scale }
 		, Rotation{ Rotation } {}

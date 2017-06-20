@@ -15,6 +15,7 @@
 #include <mesh.hpp>
 
 #include <glm/gtx/euler_angles.hpp>
+#include "glm/gtc/vec1.hpp"
 
 void GLFWErrorCallback(int Error, const char* Desc);
 
@@ -132,20 +133,6 @@ int main() {
 	ScreenRenderProg.ShaderPaths[shader_stage::Fragment] = "shader/postprocess.frag";
 	if (!ScreenRenderProg.LoadShaders()) {}
 
-	// We never move the camera in this assignment
-	// transformation to view space equals identity and can be ignored
-	auto View = glm::translate(mat4{}, vec3{ 0, 0, -1 });
-	
-	const auto NearZ = 0.01f, FarZ = 100.0f;
-#if 0
-	// Build orthographic projection
-	vec2 OrthoHalfSize = 3.f * vec2{ ScreenDimension.x / ScreenDimension.y, 1.0f };
-	auto Projection = glm::ortho(-OrthoHalfSize.x, OrthoHalfSize.x, -OrthoHalfSize.y, OrthoHalfSize.y, NearZ, FarZ);
-#else
-	const auto Fovy = glm::radians(90.f);
-	auto Projection = glm::perspectiveFov(Fovy, ScreenDimension.x, ScreenDimension.y, NearZ, FarZ);
-#endif
-
 	// Intermediate framebuffer
 	default_framebuffer IntermediateFramebuffer{glm::ivec2{ScreenDimension}};
 
@@ -197,7 +184,7 @@ int main() {
 		Input.StartFrame();
 	
     	// Per-frame timing
-		float TimeSinceStart = (float)glfwGetTime() - StartTime;
+		// float TimeSinceStart = (float)glfwGetTime() - StartTime;
 		float DeltaTime = (float)glfwGetTime() - LastTime;
 		LastTime = (float)glfwGetTime();
 
@@ -223,10 +210,19 @@ int main() {
 			const auto AngularSpeed = .5f;
 			static vec3 CameraEulerAngles{0.f};
 			CameraEulerAngles.x -= MouseDelta.y * AngularSpeed * DeltaTime;
-			//CameraEulerAngles.x = glm::clamp(CameraEulerAngles.x, glm::radians(-89.f), glm::radians(89.0f));
+			CameraEulerAngles.x = glm::clamp(CameraEulerAngles.x, glm::radians(-89.f), glm::radians(89.0f));
 			CameraEulerAngles.y -= MouseDelta.x * AngularSpeed * DeltaTime;
 			CameraEulerAngles.z = 0.0f;
-			Camera.Transform.Rotation = glm::normalize(glm::angleAxis(CameraEulerAngles.y, vec3{0.f, 1.f, 0.f}) * glm::angleAxis(CameraEulerAngles.x, vec3{1.f, 0.f, 0.f}));
+			Camera.Transform.Rotation = glm::normalize(glm::angleAxis(CameraEulerAngles.y, vec3{ 0.f, 1.f, 0.f }) * glm::angleAxis(CameraEulerAngles.x, vec3{ 1.f, 0.f, 0.f }));
+
+			// Zoom
+			const float ZoomOutFov = glm::radians(60.f), ZoomInFov = glm::radians(30.f);
+			const float RadPerSecond = glm::radians(90.f);
+			if (Input.IsDown(mouse_button::Mouse1) || Input.IsDown(mouse_button::Mouse2)) {
+				Camera.VerticalFov = glm::clamp(Camera.VerticalFov - RadPerSecond * DeltaTime, ZoomInFov, ZoomOutFov);
+			} else {
+				Camera.VerticalFov = glm::clamp(Camera.VerticalFov + RadPerSecond * DeltaTime, ZoomInFov, ZoomOutFov);
+			}
 		}
 
 		// Things moving

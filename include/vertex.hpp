@@ -9,7 +9,7 @@ namespace mesh_vertex_layout {
 		Normal,
 		TexCoords,
 	};
-};
+}
 
 
 struct mesh_vertex {
