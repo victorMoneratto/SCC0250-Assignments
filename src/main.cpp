@@ -11,7 +11,6 @@
 #include <transform.hpp>
 #include <camera.hpp>
 #include <input.hpp>
-#include <framebuffer.hpp>
 #include <mesh.hpp>
 
 #include <glm/gtx/euler_angles.hpp>
@@ -162,8 +161,8 @@ int main() {
 
 	enum class lighting_model {
 		Phong,
-		Flat,
 		Gouraud,
+		Flat,
 	};
 
 	auto Lighting = lighting_model::Phong;
@@ -220,8 +219,8 @@ int main() {
 		}
 
 		if (Input.IsDown(GLFW_KEY_1)) { Lighting = lighting_model::Phong; }
-		else if (Input.IsDown(GLFW_KEY_2)) { Lighting = lighting_model::Flat; }
-		else if (Input.IsDown(GLFW_KEY_3)) { Lighting = lighting_model::Gouraud; }
+		else if (Input.IsDown(GLFW_KEY_2)) { Lighting = lighting_model::Gouraud; }
+		else if (Input.IsDown(GLFW_KEY_3)) { Lighting = lighting_model::Flat; }
 
 #if DEBUGGING
 		gl::UseProgram(0);
@@ -243,11 +242,11 @@ int main() {
 		gl::ClearColor(ClearColor.r, ClearColor.g, ClearColor.b, 1.f);
 		gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
 
-		render_program* RenderProg;
+		render_program* RenderProg = nullptr;
 	    switch (Lighting) {
 		case lighting_model::Phong: RenderProg = &PhongRenderProg; break;
-		case lighting_model::Flat: RenderProg = &FlatRenderProg; break;
 		case lighting_model::Gouraud: RenderProg = &GouraudRenderProg; break;
+		case lighting_model::Flat: RenderProg = &FlatRenderProg; break;
 		default: Assert(!"Invalid Lighting model");
 	    }
 
@@ -258,15 +257,18 @@ int main() {
 		auto NormalMatLoc = gl::GetUniformLocation(RenderProg->ID, "NormalMat");
 		auto ColorLoc = gl::GetUniformLocation(RenderProg->ID, "Color");
 		auto TextureLoc = gl::GetUniformLocation(RenderProg->ID, "Texture");
-		auto bSolidColorLoc = gl::GetUniformLocation(RenderProg->ID, "bTexture");
+		auto bTextureLoc = gl::GetUniformLocation(RenderProg->ID, "bTexture");
+		auto CameraPositionLoc = gl::GetUniformLocation(RenderProg->ID, "Camera.Position");
 
-		auto SetupRender = [&] (glm::mat4 Model, glm::mat4 MVP, glm::mat4 NormalMat, glm::vec4 Color, int TextureSampler, int bSolidColor, int Texture) {
+		gl::Uniform3f(CameraPositionLoc, Camera.Transform.Position.x, Camera.Transform.Position.y, Camera.Transform.Position.z);
+
+		auto SetupRender = [&] (glm::mat4 Model, glm::mat4 MVP, glm::mat4 NormalMat, glm::vec4 Color, int TextureSampler, int bTexture, int Texture) {
 			gl::UniformMatrix4fv(ModelLoc, 1, false, glm::value_ptr(Model));
 			gl::UniformMatrix4fv(MVPLoc, 1, false, glm::value_ptr(MVP));
 			gl::UniformMatrix4fv(NormalMatLoc, 1, false, glm::value_ptr(NormalMat));
 			gl::Uniform4f(ColorLoc, Color.r, Color.g, Color.b, Color.a);
 			gl::Uniform1i(TextureLoc, TextureSampler);
-			gl::Uniform1i(bSolidColorLoc, bSolidColor);
+			gl::Uniform1i(bTextureLoc, bTexture);
 			gl::ActiveTexture(gl::TEXTURE0 + TextureSampler);
 			gl::BindTexture(gl::TEXTURE_2D, Texture);
 		};
@@ -281,10 +283,10 @@ int main() {
 			auto NormalMat = glm::transpose(glm::inverse(Transform.ToMatrix()));
 			auto Color = vec4{1.f, 1.f, 1.f, 1.f};
 			auto TextureSampler = 0;
-			auto bSolidColor = true;
+			auto bTexture = true;
 			auto Texture = TriangleTexture.ID;
 
-			SetupRender(Model, MVP, NormalMat, Color, TextureSampler, bSolidColor, Texture);
+			SetupRender(Model, MVP, NormalMat, Color, TextureSampler, bTexture, Texture);
 			
 			gl::BindVertexArray(Cone.VAO);
 			Cone.Draw();
@@ -301,10 +303,10 @@ int main() {
 			auto NormalMat = glm::transpose(glm::inverse(Transform.ToMatrix()));
 			auto Color = vec4{ 1.f, 1.f, 1.f, 1.f };
 			auto TextureSampler = 0;
-			auto bSolidColor = true;
+			auto bTexture = true;
 			auto Texture = CubeTexture.ID;
 
-			SetupRender(Model, MVP, NormalMat, Color, TextureSampler, bSolidColor, Texture);
+			SetupRender(Model, MVP, NormalMat, Color, TextureSampler, bTexture, Texture);
 
 			gl::BindVertexArray(Cube.VAO);
 			Cube.Draw();
@@ -338,11 +340,11 @@ int main() {
 				auto MVP = Camera.ViewProjection() * Model;
 				auto NormalMat = glm::transpose(glm::inverse(Model));
 				auto Color = vec4{ Colors[i], 1.f };
-				auto bSolidColor = false;
+				auto bTexture = false;
 				auto TextureSampler = 0;
 				auto Texture = 0;
 
-				SetupRender(Model, MVP, NormalMat, Color, TextureSampler, bSolidColor, Texture);
+				SetupRender(Model, MVP, NormalMat, Color, TextureSampler, bTexture, Texture);
 
 				Arrow.Draw();
 			}
