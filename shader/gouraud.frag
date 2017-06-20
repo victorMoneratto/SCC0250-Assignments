@@ -1,6 +1,7 @@
 #version 330 core
 
 in vertex {
+	vec3 Position;
 	vec3 Normal;
     vec2 TexCoords;
 } Vertex;

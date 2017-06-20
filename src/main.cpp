@@ -15,7 +15,6 @@
 #include <mesh.hpp>
 
 #include <glm/gtx/euler_angles.hpp>
-#include "glm/gtc/vec1.hpp"
 
 void GLFWErrorCallback(int Error, const char* Desc);
 
@@ -37,6 +36,8 @@ int main() {
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
 	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 	glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, true);
+	glfwWindowHint(GLFW_SRGB_CAPABLE, true);
+	glfwWindowHint(GLFW_SAMPLES, 4);
 
 	// Resizable
 	glfwWindowHint(GLFW_RESIZABLE, false);
@@ -91,35 +92,42 @@ int main() {
 	// Enable vsync
     glfwSwapInterval(1);
 
-#if 1
-	// Enable backface culling
+	// Backface culling
 	gl::Enable(gl::CULL_FACE);
 	gl::FrontFace(gl::CCW);
 	gl::CullFace(gl::BACK);
-#endif
 
-#if 0
-	// Enable alpha blending
+	// Z-buffering
+	gl::Enable(gl::DEPTH_TEST);
+
+	// Gamma correction
+	gl::Enable(gl::FRAMEBUFFER_SRGB);
+
+	// alpha blending
 	gl::Enable(gl::BLEND);
 	gl::BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA);
-#endif
 
 	//////////////////////////////////////
 	// RENDER PROGRAMS (aka shaders)
 	/////////////////////////////////////
 
-	// Mesh
-	render_program MeshRenderProg{};
-	MeshRenderProg.ShaderPaths[shader_stage::Vertex] = "shader/mesh.vert";
-	MeshRenderProg.ShaderPaths[shader_stage::Fragment] = "shader/mesh.frag";
-	if(!MeshRenderProg.LoadShaders()) {}
+	// Blinn-Phong shading render program
+	render_program PhongRenderProg{};
+	PhongRenderProg.ShaderPaths[shader_stage::Vertex] = "shader/phong.vert";
+	PhongRenderProg.ShaderPaths[shader_stage::Fragment] = "shader/phong.frag";
+	if (!PhongRenderProg.LoadShaders()) {}
 
-	// Mesh normals
-	render_program NormalsRenderProg{};
-	NormalsRenderProg.ShaderPaths[shader_stage::Vertex] = "shader/mesh.vert";
-	NormalsRenderProg.ShaderPaths[shader_stage::Geometry] = "shader/normals.geom";
-	NormalsRenderProg.ShaderPaths[shader_stage::Fragment] = "shader/mesh.frag";
-	if (!NormalsRenderProg.LoadShaders()) {}
+	// Flat shading render program
+	render_program FlatRenderProg{};
+	FlatRenderProg.ShaderPaths[shader_stage::Vertex] = "shader/flat.vert";
+	FlatRenderProg.ShaderPaths[shader_stage::Fragment] = "shader/flat.frag";
+	if(!FlatRenderProg.LoadShaders()) {}
+
+	// Gourard shading render program
+	render_program GouraudRenderProg{};
+	GouraudRenderProg.ShaderPaths[shader_stage::Vertex] = "shader/gouraud.vert";
+	GouraudRenderProg.ShaderPaths[shader_stage::Fragment] = "shader/gouraud.frag";
+	if (!GouraudRenderProg.LoadShaders()) {}
 
 	// Skybox
 	render_program SkyRenderProg{};
@@ -127,23 +135,10 @@ int main() {
 	SkyRenderProg.ShaderPaths[shader_stage::Fragment] = "shader/sky.frag";
 	if (!SkyRenderProg.LoadShaders()) {}
 
-	//Post Process
-	render_program ScreenRenderProg{};
-	ScreenRenderProg.ShaderPaths[shader_stage::Vertex] = "shader/postprocess.vert";
-	ScreenRenderProg.ShaderPaths[shader_stage::Fragment] = "shader/postprocess.frag";
-	if (!ScreenRenderProg.LoadShaders()) {}
-
-	// Intermediate framebuffer
-	default_framebuffer IntermediateFramebuffer{glm::ivec2{ScreenDimension}};
-
-	// Intermediate quad
-	mesh ScreenQuad{GenerateQuadTriangles(transform{ vec3{ 0 }, vec3{ 2.f } }), gl::TRIANGLES};
-	defer { ScreenQuad.Destroy(); };
-
 	mesh Arrow{ GenerateArrowTriangles(.05f, .1f, .6f, .4f, 16), gl::TRIANGLES };
 	defer{ Arrow.Destroy(); };
 
-	mesh Cube{ GenerateCubeTriangles(/*transform{vec3{0.f}, vec3{2.f}}*/), gl::TRIANGLES };
+	mesh Cube{ GenerateCubeTriangles(), gl::TRIANGLES };
 	defer{ Cube.Destroy(); };
 
 	mesh Cone{ GenerateConeTriangles(.5f, 1.f, 4), gl::TRIANGLES };
@@ -164,6 +159,14 @@ int main() {
 
 	camera Camera{ScreenDimension};
 	Camera.Transform.Position = vec3(0.f, 1.5f, 3.5f);
+
+	enum class lighting_model {
+		Phong,
+		Flat,
+		Gouraud,
+	};
+
+	auto Lighting = lighting_model::Phong;
 
 	//////////////////////////////////
 	// INTERACTION LOOP
@@ -214,44 +217,20 @@ int main() {
 			CameraEulerAngles.y -= MouseDelta.x * AngularSpeed * DeltaTime;
 			CameraEulerAngles.z = 0.0f;
 			Camera.Transform.Rotation = glm::normalize(glm::angleAxis(CameraEulerAngles.y, vec3{ 0.f, 1.f, 0.f }) * glm::angleAxis(CameraEulerAngles.x, vec3{ 1.f, 0.f, 0.f }));
-
-			// Zoom
-			const float ZoomOutFov = glm::radians(60.f), ZoomInFov = glm::radians(30.f);
-			const float RadPerSecond = glm::radians(90.f);
-			if (Input.IsDown(mouse_button::Mouse1) || Input.IsDown(mouse_button::Mouse2)) {
-				Camera.VerticalFov = glm::clamp(Camera.VerticalFov - RadPerSecond * DeltaTime, ZoomInFov, ZoomOutFov);
-			} else {
-				Camera.VerticalFov = glm::clamp(Camera.VerticalFov + RadPerSecond * DeltaTime, ZoomInFov, ZoomOutFov);
-			}
 		}
 
-		// Things moving
-		vec3 ConePosition;
-		vec3 TransformScale;
-		quat CubeRotation;
-		{
-			static float ConePositionAlpha = 0.f;
-			static float TransformScaleAlpha = 1.f;
-			static float CubeRotationAlpha = 0.f;
-
-			if (Input.IsDown(GLFW_KEY_LEFT)) { ConePositionAlpha += Pi * DeltaTime; }
-			if (Input.IsDown(GLFW_KEY_UP))	 { TransformScaleAlpha += Pi * DeltaTime; }
-			if (Input.IsDown(GLFW_KEY_DOWN)) { TransformScaleAlpha = glm::max(.1f, TransformScaleAlpha - Pi * DeltaTime); }
-			if (Input.IsDown(GLFW_KEY_RIGHT)){ CubeRotationAlpha += Pi * DeltaTime; }
-
-			ConePosition = 2.f * vec3{0.f, 1.f, 0.f} * glm::abs(glm::sin(ConePositionAlpha));
-			TransformScale = vec3{ TransformScaleAlpha };
-			CubeRotation = glm::rotate(mat4{}, CubeRotationAlpha, vec3{ 0.f, 1.f, 0.f });
-		}
+		if (Input.IsDown(GLFW_KEY_1)) { Lighting = lighting_model::Phong; }
+		else if (Input.IsDown(GLFW_KEY_2)) { Lighting = lighting_model::Flat; }
+		else if (Input.IsDown(GLFW_KEY_3)) { Lighting = lighting_model::Gouraud; }
 
 #if DEBUGGING
 		gl::UseProgram(0);
 		// Reload shaders
 		if (Input.IsDown(GLFW_KEY_F7)) {
-			MeshRenderProg.ReloadShaders();
-			NormalsRenderProg.ReloadShaders();
+			PhongRenderProg.ReloadShaders();
+			FlatRenderProg.ReloadShaders();
+			GouraudRenderProg.ReloadShaders();
 			SkyRenderProg.ReloadShaders();
-			ScreenRenderProg.ReloadShaders();
 		}
 #endif
 
@@ -259,48 +238,53 @@ int main() {
 		// DRAWING
 		/////////////////////////////////
 
-#define POSTPROCESS false
-#if POSTPROCESS
-		// Bind intermediate framebuffer
-		gl::BindFramebuffer(gl::FRAMEBUFFER, IntermediateFramebuffer.ID);
-#else
-		gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
-#endif
-
-		gl::Enable(gl::DEPTH_TEST);
-		gl::DepthMask(true);
-		gl::DepthFunc(gl::LESS);
-
 		// Clear buffers
-		const auto ClearColor = vec3{ .2, .3, .65 };
+		const auto ClearColor = vec3{ .2f, .3f, .65f };
 		gl::ClearColor(ClearColor.r, ClearColor.g, ClearColor.b, 1.f);
 		gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
 
+		render_program* RenderProg;
+	    switch (Lighting) {
+		case lighting_model::Phong: RenderProg = &PhongRenderProg; break;
+		case lighting_model::Flat: RenderProg = &FlatRenderProg; break;
+		case lighting_model::Gouraud: RenderProg = &GouraudRenderProg; break;
+		default: Assert(!"Invalid Lighting model");
+	    }
+
 		// Uniforms
-		gl::UseProgram(MeshRenderProg.ID);
-		auto MVPLoc = gl::GetUniformLocation(MeshRenderProg.ID, "MVP");
-		auto NormalMatLoc = gl::GetUniformLocation(MeshRenderProg.ID, "NormalMat");
-		auto ColorLoc = gl::GetUniformLocation(MeshRenderProg.ID, "Color");
-		auto TextureLoc = gl::GetUniformLocation(MeshRenderProg.ID, "Texture");
-		auto bSolidColorLoc = gl::GetUniformLocation(MeshRenderProg.ID, "bTexture");
+		gl::UseProgram(RenderProg->ID);
+		auto ModelLoc = gl::GetUniformLocation(RenderProg->ID, "Model");
+		auto MVPLoc = gl::GetUniformLocation(RenderProg->ID, "MVP");
+		auto NormalMatLoc = gl::GetUniformLocation(RenderProg->ID, "NormalMat");
+		auto ColorLoc = gl::GetUniformLocation(RenderProg->ID, "Color");
+		auto TextureLoc = gl::GetUniformLocation(RenderProg->ID, "Texture");
+		auto bSolidColorLoc = gl::GetUniformLocation(RenderProg->ID, "bTexture");
 
-		{
-			// Draw Cone
-			auto Transform = transform{ vec3{-1.f, 0.f, 0.f} + ConePosition, vec3{1.f}, glm::rotate(mat4{}, Pi/2, vec3{0.f, 0.f, 1.f}) };
-			auto MVP = Camera.ViewProjection() * Transform.ToMatrix();
-			auto NormalMat = glm::transpose(glm::inverse(MVP));
-			auto Color = vec4{1.f, 1.f, 1.f, 1.f};
-			auto TextureSampler = 0;
-			auto bSolidColor = true;
-
+		auto SetupRender = [&] (glm::mat4 Model, glm::mat4 MVP, glm::mat4 NormalMat, glm::vec4 Color, int TextureSampler, int bSolidColor, int Texture) {
+			gl::UniformMatrix4fv(ModelLoc, 1, false, glm::value_ptr(Model));
 			gl::UniformMatrix4fv(MVPLoc, 1, false, glm::value_ptr(MVP));
 			gl::UniformMatrix4fv(NormalMatLoc, 1, false, glm::value_ptr(NormalMat));
 			gl::Uniform4f(ColorLoc, Color.r, Color.g, Color.b, Color.a);
 			gl::Uniform1i(TextureLoc, TextureSampler);
 			gl::Uniform1i(bSolidColorLoc, bSolidColor);
-			
 			gl::ActiveTexture(gl::TEXTURE0 + TextureSampler);
-			gl::BindTexture(gl::TEXTURE_2D, TriangleTexture.ID);
+			gl::BindTexture(gl::TEXTURE_2D, Texture);
+		};
+
+		{
+			// Draw Cone
+			transform Transform;
+			Transform.Position = vec3{ -1.f, 0.f, 0.f };
+			Transform.Rotation = glm::rotate(mat4{}, Pi / 2, vec3{ 0.f, 0.f, 1.f });
+			auto Model = Transform.ToMatrix();
+			auto MVP = Camera.ViewProjection() * Model;
+			auto NormalMat = glm::transpose(glm::inverse(Transform.ToMatrix()));
+			auto Color = vec4{1.f, 1.f, 1.f, 1.f};
+			auto TextureSampler = 0;
+			auto bSolidColor = true;
+			auto Texture = TriangleTexture.ID;
+
+			SetupRender(Model, MVP, NormalMat, Color, TextureSampler, bSolidColor, Texture);
 			
 			gl::BindVertexArray(Cone.VAO);
 			Cone.Draw();
@@ -310,21 +294,17 @@ int main() {
 
 		{
 			// Draw Cube
-			auto Transform = transform{ vec3{ 1.f, .5f, 0.f }, vec3{1}, CubeRotation };
-			auto MVP = Camera.ViewProjection() * Transform.ToMatrix();
-			auto NormalMat = glm::transpose(glm::inverse(MVP));
+			transform Transform;
+			Transform.Position = vec3{ 1.f, .5f, 0.f };
+			auto Model = Transform.ToMatrix();
+			auto MVP = Camera.ViewProjection() * Model;
+			auto NormalMat = glm::transpose(glm::inverse(Transform.ToMatrix()));
 			auto Color = vec4{ 1.f, 1.f, 1.f, 1.f };
 			auto TextureSampler = 0;
 			auto bSolidColor = true;
+			auto Texture = CubeTexture.ID;
 
-			gl::UniformMatrix4fv(MVPLoc, 1, false, glm::value_ptr(MVP));
-			gl::UniformMatrix4fv(NormalMatLoc, 1, false, glm::value_ptr(NormalMat));
-			gl::Uniform4f(ColorLoc, Color.r, Color.g, Color.b, Color.a);
-			gl::Uniform1i(TextureLoc, TextureSampler);
-			gl::Uniform1i(bSolidColorLoc, bSolidColor);
-
-			gl::ActiveTexture(gl::TEXTURE0 + TextureSampler);
-			gl::BindTexture(gl::TEXTURE_2D, CubeTexture.ID);
+			SetupRender(Model, MVP, NormalMat, Color, TextureSampler, bSolidColor, Texture);
 
 			gl::BindVertexArray(Cube.VAO);
 			Cube.Draw();
@@ -335,51 +315,39 @@ int main() {
 		
 		{
 			// Draw transform widget
-			std::array<transform, 3> Model = {transform{}, transform{}, transform{}};
-			Model[0].Position = vec3{ 0.f, 2.f, 0.f };
-			Model[1].Position = vec3{ 0.f, 2.f, 0.f };
-			Model[2].Position = vec3{ 0.f, 2.f, 0.f };
+			vec3 Position = vec3{ 0.f, 2.f, 0.f };
+			std::array<transform, 3> Models = {transform{}, transform{}, transform{}};
+			Models[0].Position = Position;
+			Models[1].Position = Position;
+			Models[2].Position = Position;
 
-			Model[0].Rotation = quat{};
-			Model[1].Rotation = glm::rotate(mat4{}, glm::radians(90.f), vec3{ 0, 0, 1 });
-			Model[2].Rotation = glm::rotate(mat4{}, glm::radians(-90.f), vec3{ 0, 1, 0 });
+			Models[0].Rotation = quat{};
+			Models[1].Rotation = glm::rotate(mat4{}, glm::radians(90.f), vec3{ 0, 0, 1 });
+			Models[2].Rotation = glm::rotate(mat4{}, glm::radians(-90.f), vec3{ 0, 1, 0 });
 
-			Model[0].Scale = TransformScale;
-			Model[1].Scale = TransformScale;
-			Model[2].Scale = TransformScale;
+			vec3 TransformScale = vec3{ 1.f };
+			Models[0].Scale = TransformScale;
+			Models[1].Scale = TransformScale;
+			Models[2].Scale = TransformScale;
 
 			std::array<vec3, 3> Colors = { vec3{1.f, 0.f, 0.f}, vec3{0.f, 1.f, 0.f}, vec3{0.f, 0.f, 1.f} };
 
 			gl::BindVertexArray(Arrow.VAO);
 			for (int i = 0; i < 3; ++i) {
-				auto MVP = Camera.ViewProjection() * Model[i].ToMatrix();
-				auto NormalMat = glm::transpose(glm::inverse(MVP));
+				auto Model = Models[i].ToMatrix();
+				auto MVP = Camera.ViewProjection() * Model;
+				auto NormalMat = glm::transpose(glm::inverse(Model));
 				auto Color = vec4{ Colors[i], 1.f };
 				auto bSolidColor = false;
+				auto TextureSampler = 0;
+				auto Texture = 0;
 
-				gl::UniformMatrix4fv(MVPLoc, 1, false, glm::value_ptr(MVP));
-				gl::UniformMatrix4fv(NormalMatLoc, 1, false, glm::value_ptr(NormalMat));
-				gl::Uniform4f(ColorLoc, Color.r, Color.g, Color.b, Color.a);
-				gl::Uniform1i(bSolidColorLoc, bSolidColor);
-
-				Arrow.Draw();
-			}
-#if 0
-			gl::UseProgram(NormalsRenderProg.ID);
-			gl::Uniform3f(ColorLoc, 1.f, 1.f, 0.f);
-			for (int i = 0; i < 3; ++i) {
-				auto MVP = Camera.ViewProjection() * Rotations[i];
-				gl::UniformMatrix4fv(MVPLoc, 1, false, glm::value_ptr(MVP));
-
-				auto NormalMat = glm::transpose(glm::inverse(MVP));
-				gl::UniformMatrix4fv(NormalMatLoc, 1, false, glm::value_ptr(NormalMat));
+				SetupRender(Model, MVP, NormalMat, Color, TextureSampler, bSolidColor, Texture);
 
 				Arrow.Draw();
 			}
-#endif
 		}
 
-#if 1
 		{
 			//Render skybox
 			gl::CullFace(gl::FRONT);
@@ -408,39 +376,6 @@ int main() {
 
 			Cube.Draw();
 		}
-#endif
-
-#if 0
-    	// Draw to screen
-		{
-			gl::Disable(gl::DEPTH_TEST);
-			// Go back to screen framebuffer
-			gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
-			gl::ClearColor(0.f, 0.f, 1.f, 1.f);
-			gl::Clear(gl::COLOR_BUFFER_BIT);
-
-            // Enable texture unit
-			const uint PostTextureUnit = 0;
-			gl::ActiveTexture(gl::TEXTURE0 + PostTextureUnit);
-			gl::BindTexture(gl::TEXTURE_2D, IntermediateFramebuffer.ColorTexture);
-
-			gl::UseProgram(ScreenRenderProg.ID);
-
-            // Pass uniforms
-			auto PostTextureLoc = gl::GetUniformLocation(ScreenRenderProg.ID, "Texture");
-			gl::Uniform1i(PostTextureLoc, PostTextureUnit);
-
-			auto TimeLoc = gl::GetUniformLocation(ScreenRenderProg.ID, "Time");
-			gl::Uniform1f(TimeLoc, TimeSinceStart);
-
-			auto ResolutionLoc = gl::GetUniformLocation(ScreenRenderProg.ID, "Resolution");
-			gl::Uniform2f(ResolutionLoc, ScreenDimension.x, ScreenDimension.y);
-
-            // Draw
-			gl::BindVertexArray(ScreenQuad.VAO);
-			ScreenQuad.Draw();
-		}
-#endif
 
         glfwSwapBuffers(Window);
 		Input.EndFrame();
@@ -494,3 +429,4 @@ void APIENTRY GLErrorLog(GLenum Source, GLenum Type, GLuint /*ID*/, GLenum Sever
 
 	LogError("GL: [%s][%s][%s] %s\n", SourceText, TypeText, SeverityText, Message);
 }
+

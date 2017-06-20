@@ -30,14 +30,16 @@ struct texture {
 
 	uint ID;
 	int Width, Height, NumChannels;
+	bool32 SRGB;
 
 	std::string Path;
 
-	texture(std::string Path = "") 
+	texture(std::string Path = "", bool32 SRGB = true) 
 		: ID{ (uint)-1 }
 		, Width{ 0 }, Height{ 0 }
 		, NumChannels{ 0 }
-		, Path{ Path }{}
+		, Path{ Path }
+		, SRGB{ SRGB } {}
 
 	~texture() {
 		gl::DeleteTextures(1, &ID); ID = -1;
@@ -67,16 +69,30 @@ struct texture {
 
 		GLint InternalFormat = 0;
 		GLenum Format = 0;
-		switch(NumChannels) {
-		case 3: 
-			InternalFormat = gl::RGB;
-			Format = gl::RGB;
-			break;
-		case 4:
-			InternalFormat = gl::RGBA;
-			Format = gl::RGBA;
-			break;
-		default: Assert(!"Image with number of channels not yet supported");
+		if(SRGB) {
+			switch(NumChannels) {
+			case 3: 
+				InternalFormat = gl::SRGB8;
+				Format = gl::RGB;
+				break;
+			case 4:
+				InternalFormat = gl::SRGB8_ALPHA8;
+				Format = gl::RGBA;
+				break;
+			default: Assert(!"Image with number of channels not yet supported");
+			}
+		} else {
+			switch (NumChannels) {
+			case 3:
+				InternalFormat = gl::RGB;
+				Format = gl::RGB;
+				break;
+			case 4:
+				InternalFormat = gl::RGBA;
+				Format = gl::RGBA;
+				break;
+			default: Assert(!"Image with number of channels not yet supported");
+			}
 		}
 
 		// As we wont do lighting in this asignment RGBA is acceptable, 

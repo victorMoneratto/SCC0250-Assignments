@@ -23,8 +23,6 @@ struct render_program {
     std::array<std::string, shader_stage::TOTAL> ShaderPaths;
 
     render_program();
-	render_program(const render_program&) = delete;
-	render_program& operator=(const render_program&) = delete;
 
     ~render_program();
 
