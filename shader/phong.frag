@@ -8,11 +8,13 @@ in vertex {
 
 out vec4 OutColor;
 
-uniform sampler2D Texture;
-uniform vec4 Color;
+struct material {
+	sampler2D Texture;
+	vec4 Color;
+	float SpecularPower;
+};
 
- // Former shininess, this is a better name as shininess may be confused in a PBR context
-float SpecularPower = 128; 
+uniform material Material;
 
 struct camera {
 	vec3 Position;
@@ -28,14 +30,15 @@ struct light {
 	vec3 ConeDirection;
 	float LinearFalloff;
 	float QuadraticFalloff;
-	float InnerCutoff;
-	float OuterCutoff;	
+	float InnerCone;
+	float OuterCone;
 };
 
 #define NUM_LIGHTS 3
-light Lights[NUM_LIGHTS];
+uniform light Lights[NUM_LIGHTS];
 
 #define saturate(x) (clamp(x, 0.0, 1.0))
+#define lengthSqr(x) (dot(x,x))
 #define PI 3.1415926535897932384626433832795
 
 vec3 DoLighting(light Light, vec3 Color, vec3 Normal, vec3 Pos, vec3 ToCamera) {
@@ -55,8 +58,10 @@ vec3 DoLighting(light Light, vec3 Color, vec3 Normal, vec3 Pos, vec3 ToCamera) {
 			+ Light.QuadraticFalloff * DistanceToLight * DistanceToLight);
 
 		// Cone
-		float Theta = dot(ToLight, normalize(-Light.ConeDirection));
-		Attenuation *= saturate((Theta - Light.OuterCutoff)/(Light.InnerCutoff-Light.OuterCutoff));
+		if(lengthSqr(Light.ConeDirection) > 0) {
+			float Theta = dot(ToLight, normalize(-Light.ConeDirection));
+			Attenuation *= saturate((Theta - Light.OuterCone)/(Light.InnerCone-Light.OuterCone));
+		}
 	}
 
 	vec3 AmbientColor = Light.Ambient * Light.Color * Color;
@@ -64,46 +69,20 @@ vec3 DoLighting(light Light, vec3 Color, vec3 Normal, vec3 Pos, vec3 ToCamera) {
 	float Diffuse = max(0.0, dot(Vertex.Normal, ToLight));
 	vec3 DiffuseColor = Diffuse * Color * Light.Color;
 
-	vec3 SpecularColor = vec3(0);
-	if(Diffuse > 0.0) {
-		float Specular = pow(max(0.0, dot(ToCamera, reflect(-ToLight, Normal))), SpecularPower);
-		SpecularColor = Specular * Color * Light.SpecularColor;
-	}
+	float Specular = pow(max(0.0, dot(ToCamera, reflect(-ToLight, Normal))), Material.SpecularPower);
+	vec3 SpecularColor = Specular * Color * Light.SpecularColor;
 
 	return AmbientColor + Attenuation * (DiffuseColor + SpecularColor);
 }
 
 void main() {
-	vec4 BaseColor = texture(Texture, Vertex.TexCoords);
- 	BaseColor *= Color;
-
-	Lights[0].Position = vec4(.125, 1, 0, 0);
-	Lights[0].Color = vec3(.25, .25, .5);
-	Lights[0].SpecularColor = vec3(1, 1, 2);
-	Lights[0].Ambient = 0.05;
-
-	Lights[1].Position = vec4(-3, 1, 0, 1);
-	Lights[1].Color = vec3(.5, .25, .25);
-	Lights[1].SpecularColor = vec3(2, 1, 1);
-	Lights[1].Ambient = 0.05;
-	Lights[1].LinearFalloff = .025;
-	Lights[1].QuadraticFalloff = .01;
-	Lights[1].InnerCutoff = cos(PI);
-	Lights[1].OuterCutoff = cos(PI);
-
-	Lights[2].Position = vec4(0, 0, -1, 1);
-	Lights[2].ConeDirection = vec3(0, 0, -1);
-	Lights[2].Color = vec3(.25, .25, .5);
-	Lights[2].SpecularColor = vec3(1, 1, 2);
-	Lights[2].Ambient = 0.05;
-	Lights[2].LinearFalloff = .05;
-	Lights[2].QuadraticFalloff = .01;
-	Lights[2].InnerCutoff = cos(PI/2);
-	Lights[2].OuterCutoff = cos(PI/2);
+	vec4 BaseColor = texture(Material.Texture, Vertex.TexCoords);
+ 	BaseColor *= Material.Color;
 
 	OutColor.rgb = vec3(0);
 	OutColor.a = BaseColor.a;
-	for(int i = 0; i < NUM_LIGHTS; ++i) {
+	for(int i = 0; i < NUM_LIGHTS; ++i)
+	{
 		vec3 ToCamera = normalize(Camera.Position - Vertex.Position);
 		OutColor.rgb += DoLighting(Lights[i], BaseColor.rgb, Vertex.Normal, Vertex.Position, ToCamera);
 	}

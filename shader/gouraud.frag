@@ -4,6 +4,7 @@ in vertex {
 	vec3 Position;
 	vec3 Normal;
     vec2 TexCoords;
+    vec3 Lighting;
 } Vertex;
 
 out vec4 OutColor;
@@ -13,8 +14,5 @@ uniform vec4 Color;
 uniform bool bTexture;
 
 void main() {
- 	OutColor.rgba = Color;
-	if(bTexture) {
-		OutColor = texture(Texture, Vertex.TexCoords);
-	}
+ 	OutColor = vec4(Vertex.Lighting,1) * texture(Texture, Vertex.TexCoords);
 }

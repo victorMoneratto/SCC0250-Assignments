@@ -12,7 +12,7 @@
 #include <camera.hpp>
 #include <input.hpp>
 #include <mesh.hpp>
-
+#include <light.hpp>
 #include <glm/gtx/euler_angles.hpp>
 
 void GLFWErrorCallback(int Error, const char* Desc);
@@ -154,6 +154,33 @@ int main() {
 	auto Skybox = MakeCubemap("content/skyboxes/day_", "tga", true);
 	Assert(Skybox.ID > 0);
 
+	std::array<light, 3> Lights;
+	// Directional Light
+	Lights[0].Position = vec4(.125f, 1.f, 0.f, 0.f);
+	Lights[0].Color = vec3(.25f, .25f, 1.f);
+	Lights[0].Ambient = 0.05f;
+	Lights[0].SpecularColor = vec3(.5f, .5f, 5.f);
+
+	// Positional Light
+	Lights[1].Position = vec4(0.f, .5f, 0.f, 1.f);
+	Lights[1].Color = vec3(1.f, .25f, .25f);
+	Lights[1].Ambient = 0.05f;
+	Lights[1].SpecularColor = vec3(5.f, .5f, .5f);
+	Lights[1].LinearFalloff = .025f;
+	Lights[1].QuadraticFalloff = .01f;
+	Lights[1].ConeDirection = vec3(0.f, 0.f, 0.f);
+
+	// Spotlight
+	Lights[2].Position = vec4(1.f, .5f, .75f, 1.f);
+	Lights[2].Color = vec3(.25f, 1.f, .25f);
+	Lights[2].Ambient = 0.05f;
+	Lights[2].SpecularColor = vec3(.5f, 5.f, .5f);
+	Lights[2].LinearFalloff = .05f;
+	Lights[2].QuadraticFalloff = .01f;
+	Lights[2].ConeDirection = vec3(0, 0, -1.f);
+	Lights[2].InnerCone = cos(Pi / 16);
+	Lights[2].OuterCone = cos(Pi / 12);
+
 	// timing from start of simulation
 	float StartTime = (float) glfwGetTime();
 	float LastTime = (float) StartTime;
@@ -220,6 +247,22 @@ int main() {
 			Camera.Transform.Rotation = glm::normalize(glm::angleAxis(CameraEulerAngles.y, vec3{ 0.f, 1.f, 0.f }) * glm::angleAxis(CameraEulerAngles.x, vec3{ 1.f, 0.f, 0.f }));
 		}
 
+		auto& Spotlight = Lights[2];
+		static bool IsFlashlightOn = true;
+		if (Input.JustUp(mouse_button::Left) || Input.JustUp(mouse_button::Right)) {
+			IsFlashlightOn = !IsFlashlightOn;
+		}
+
+		if (IsFlashlightOn) {
+			Lights[2].InnerCone = cos(Pi / 16);
+			Lights[2].OuterCone = cos(Pi / 12);
+			Spotlight.Position = vec4{ Camera.Transform.Position, 1.f };
+			Spotlight.ConeDirection = glm::rotate(Camera.Transform.Rotation, vec3{ 0.f, 0.f, -1.f });
+		} else {
+			Lights[2].InnerCone = 1;
+			Lights[2].OuterCone = 1;
+		}
+
 		if (Input.IsDown(GLFW_KEY_1)) { Lighting = lighting_model::Phong; }
 		else if (Input.IsDown(GLFW_KEY_2)) { Lighting = lighting_model::Gouraud; }
 		else if (Input.IsDown(GLFW_KEY_3)) { Lighting = lighting_model::Flat; }
@@ -252,23 +295,36 @@ int main() {
 		default: Assert(!"Invalid Lighting model");
 	    }
 
-		// Uniforms
 		gl::UseProgram(RenderProg->ID);
+
+		// Lighting uniforms
+		for (int i = 0; i < Lights.size(); ++i) {
+			char Buffer[24];
+			sprintf(Buffer, "Lights[%d]", i);
+			BindLight(RenderProg->ID, Buffer, Lights[i]);
+		}
+		
+		// Transform uniforms
 		auto ModelLoc = gl::GetUniformLocation(RenderProg->ID, "Model");
 		auto MVPLoc = gl::GetUniformLocation(RenderProg->ID, "MVP");
 		auto NormalMatLoc = gl::GetUniformLocation(RenderProg->ID, "NormalMat");
-		auto ColorLoc = gl::GetUniformLocation(RenderProg->ID, "Color");
-		auto TextureLoc = gl::GetUniformLocation(RenderProg->ID, "Texture");
-		auto bTextureLoc = gl::GetUniformLocation(RenderProg->ID, "bTexture");
-		auto CameraPositionLoc = gl::GetUniformLocation(RenderProg->ID, "Camera.Position");
-
+		
+		// Material uniforms
+		auto TextureLoc = gl::GetUniformLocation(RenderProg->ID, "Material.Texture");
+    	auto ColorLoc = gl::GetUniformLocation(RenderProg->ID, "Material.Color");
+		auto SpecularPowerLoc = gl::GetUniformLocation(RenderProg->ID, "Material.SpecularPower");
+		
+		
+    	auto CameraPositionLoc = gl::GetUniformLocation(RenderProg->ID, "Camera.Position");
 		gl::Uniform3f(CameraPositionLoc, Camera.Transform.Position.x, Camera.Transform.Position.y, Camera.Transform.Position.z);
+		
 
-		auto SetupRender = [&] (glm::mat4 Model, glm::mat4 MVP, glm::mat4 NormalMat, glm::vec4 Color, int TextureSampler, int Texture) {
+		auto SetupRender = [&] (glm::mat4 Model, glm::mat4 MVP, glm::mat4 NormalMat, glm::vec4 Color, float SpecularPower, int TextureSampler, int Texture) {
 			gl::UniformMatrix4fv(ModelLoc, 1, false, glm::value_ptr(Model));
 			gl::UniformMatrix4fv(MVPLoc, 1, false, glm::value_ptr(MVP));
 			gl::UniformMatrix4fv(NormalMatLoc, 1, false, glm::value_ptr(NormalMat));
 			gl::Uniform4f(ColorLoc, Color.r, Color.g, Color.b, Color.a);
+			gl::Uniform1f(SpecularPowerLoc, SpecularPower);
 			gl::Uniform1i(TextureLoc, TextureSampler);
 			gl::ActiveTexture(gl::TEXTURE0 + TextureSampler);
 			gl::BindTexture(gl::TEXTURE_2D, Texture);
@@ -283,10 +339,11 @@ int main() {
 			auto MVP = Camera.ViewProjection() * Model;
 			auto NormalMat = glm::transpose(glm::inverse(Transform.ToMatrix()));
 			auto Color = vec4{1.f, 1.f, 1.f, 1.f};
+			auto SpecularPower = 32.f;
 			auto TextureSampler = 0;
 			auto Texture = TriangleTexture.ID;
 
-			SetupRender(Model, MVP, NormalMat, Color, TextureSampler, Texture);
+			SetupRender(Model, MVP, NormalMat, Color, SpecularPower, TextureSampler, Texture);
 			
 			gl::BindVertexArray(Cone.VAO);
 			Cone.Draw();
@@ -302,10 +359,11 @@ int main() {
 			auto MVP = Camera.ViewProjection() * Model;
 			auto NormalMat = glm::transpose(glm::inverse(Transform.ToMatrix()));
 			auto Color = vec4{ 1.f, 1.f, 1.f, 1.f };
+			auto SpecularPower = 256.f;
 			auto TextureSampler = 0;
 			auto Texture = CubeTexture.ID;
 
-			SetupRender(Model, MVP, NormalMat, Color, TextureSampler, Texture);
+			SetupRender(Model, MVP, NormalMat, Color, SpecularPower, TextureSampler, Texture);
 
 			gl::BindVertexArray(Cube.VAO);
 			Cube.Draw();
@@ -339,10 +397,11 @@ int main() {
 				auto MVP = Camera.ViewProjection() * Model;
 				auto NormalMat = glm::transpose(glm::inverse(Model));
 				auto Color = vec4{ Colors[i], 1.f };
+				auto SpecularPower = 32.f;
 				auto TextureSampler = 0;
 				auto Texture = BlankTextureID;
 
-				SetupRender(Model, MVP, NormalMat, Color, TextureSampler, Texture);
+				SetupRender(Model, MVP, NormalMat, Color, SpecularPower, TextureSampler, Texture);
 
 				Arrow.Draw();
 			}
@@ -353,7 +412,7 @@ int main() {
 			gl::CullFace(gl::FRONT);
 			defer{ gl::CullFace(gl::BACK); };
 
-			gl::DepthFunc(gl::LEQUAL);	// We have to use LEQUAL because the depth buffer starts filled with 1.0, the max value
+			gl::DepthFunc(gl::LEQUAL);
 			defer{ gl::DepthFunc(gl::LESS); };
 
 			gl::UseProgram(SkyRenderProg.ID);
